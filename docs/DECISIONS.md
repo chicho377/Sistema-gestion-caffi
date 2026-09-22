@@ -77,6 +77,14 @@ No habrá registro público. El primer Administrador se provisiona manualmente u
 
 Los nuevos usuarios tienen inicialmente rol `collaborator`, salvo acción administrativa explícita autorizada, y un registro correspondiente en `profiles`. El invitado recibe correo para establecer/confirmar acceso. Solo Administrador modifica rol o estado; ningún usuario cambia su propio rol ni se eleva privilegios. La implementación V1 utilizará invitación por correo como flujo de alta.
 
+## 18. Configuración y catálogos de Fase 2 — D-18
+
+Fase 1 aprobada y cerrada para desarrollo; autorizada únicamente Fase 2. Negocio inicial: caffi crochet, teléfono 83639663, correo carolinaserranorodriguez@gmail.com, adelanto 50 %. Valor/hora pendiente, editable por Administrador. Logo aportado posteriormente por el usuario. Solo Administrador modifica toda la configuración, tanto general como financiera.
+
+Productos y futuros pedidos se expresan en CRC. Materiales admiten costo actual en CRC o USD; las conversiones USD→CRC usan venta de referencia del BCCR desde Fase 2. El usuario autorizó sustituir BCR y conservar la última tasa obtenida ante fallos. Se consulta mediante el proveedor público tipodecambio.paginasweb.cr, identificándolo junto a la fecha del dato; una tasa guardada no se presenta como recién actualizada. Antes de la primera consulta exitosa no se inventa una tasa. Conservar monto y moneda originales; no implementar gastos ni valoración de inventario. El costo de un material creado por Colaborador queda pendiente (ausencia de costo), nunca cero supuesto, y lo completa Administrador. Colaborador no recibe ni modifica costos.
+
+El consecutivo mantiene D-11; en Fase 2 se muestra su formato aprobado, sin generar pedidos. Sin movimientos ni existencias reales, sin datos ficticios en históricos dependientes de pedidos.
+
 ## Trazabilidad
 
 | Decisiones | Requisitos afectados | Modelo / arquitectura |
@@ -107,4 +115,4 @@ No bloquean la base técnica; sí deben resolverse antes de implementar el compo
 
 ## Estado de implementación
 
-Autorizada únicamente la Fase 1 — Base y seguridad, incluyendo proyecto, dependencias, autenticación, administración de usuarios, perfiles, RLS y auditoría inicial. Dashboard como shell sin métricas ficticias. No avanzar a Fase 2 sin aprobación. AGENTS.md y reference permanecen intactos; esta actualización de docs incorpora D-17.
+Fase 1 cerrada y aprobada para desarrollo. Autorizada Fase 2 — Configuración y catálogos conforme a D-18. Dashboard permanece como shell. No avanzar a Fase 3 sin aprobación. AGENTS.md y reference permanecen intactos.

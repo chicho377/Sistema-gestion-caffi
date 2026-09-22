@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -14,6 +15,9 @@ import {
   Package,
   Timer,
   Truck,
+  Layers,
+  Shapes,
+  Settings,
 } from "lucide-react";
 import { Brand } from "./brand";
 import { logout } from "@/features/auth/actions";
@@ -23,10 +27,14 @@ export function AppShell({
   children,
   name,
   role,
+  businessName,
+  hasLogo,
 }: {
   children: React.ReactNode;
   name: string;
   role: "admin" | "collaborator";
+  businessName: string;
+  hasLogo: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const drawer = useRef<HTMLDialogElement>(null);
@@ -74,8 +82,6 @@ export function AppShell({
       </Link>
       {[
         [ClipboardList, "Pedidos"],
-        [UsersRound, "Clientes"],
-        [Package, "Productos"],
         [Timer, "Tiempo"],
         [Truck, "Envíos"],
       ].map(([Icon, label]) => {
@@ -92,6 +98,25 @@ export function AppShell({
           </span>
         );
       })}
+      {[
+        [UsersRound, "Clientes", "/clientes"],
+        [Package, "Productos", "/productos"],
+        [Layers, "Materiales", "/materiales"],
+        [Shapes, "Categorías", "/categorias"],
+      ].map(([Icon, label, href]) => {
+        const ItemIcon = Icon as typeof House;
+        return (
+          <Link
+            key={String(href)}
+            href={String(href)}
+            className={path.startsWith(String(href)) ? "active" : ""}
+            onClick={() => setOpen(false)}
+          >
+            <ItemIcon size={20} />
+            {String(label)}
+          </Link>
+        );
+      })}
       <Link
         className={path === "/mas" ? "active" : ""}
         href="/mas"
@@ -103,6 +128,14 @@ export function AppShell({
       {role === "admin" && (
         <>
           <span className="nav-caption">ADMINISTRACIÓN</span>
+          <Link
+            href="/configuracion"
+            className={path === "/configuracion" ? "active" : ""}
+            onClick={() => setOpen(false)}
+          >
+            <Settings size={20} />
+            Configuración
+          </Link>
           <Link
             className={path === "/usuarios" ? "active" : ""}
             href="/usuarios"
@@ -135,7 +168,17 @@ export function AppShell({
             <Menu />
           </button>
           <div className="topbar-title">
-            Tu taller, en un solo lugar<span>Un nuevo día para crear</span>
+            {hasLogo && (
+              <Image
+                unoptimized
+                src="/api/catalog-image/logo"
+                alt=""
+                width={36}
+                height={36}
+              />
+            )}
+            {businessName}
+            <span>Tu taller, en un solo lugar</span>
           </div>
           <div className="account">
             <span className="avatar" aria-hidden>
@@ -196,10 +239,13 @@ export function AppShell({
           <ClipboardList size={22} />
           Pedidos
         </span>
-        <span aria-disabled="true" title="Disponible en una fase posterior">
+        <Link
+          href="/clientes"
+          aria-current={path.startsWith("/clientes") ? "page" : undefined}
+        >
           <UsersRound size={22} />
           Clientes
-        </span>
+        </Link>
         <Link aria-current={path === "/mas" ? "page" : undefined} href="/mas">
           <Ellipsis size={22} />
           Más

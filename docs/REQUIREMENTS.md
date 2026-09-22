@@ -442,6 +442,8 @@ Zona horaria `America/Costa_Rica`, semana desde lunes. Ingresos por fecha efecti
 **RF-CON-03** Valor/hora y otros parámetros de costeo.  
 **RF-CON-04** Stock mínimo por material.
 
+**RF-CON-05 — Fase 2 / D-18** Configuración inicial de caffi crochet según DECISIONS.md. Solo Administrador modifica configuración general y financiera. Productos y futuros pedidos en CRC; costo de materiales en CRC/USD con equivalente CRC usando venta de referencia del BCCR. Persistir la última tasa obtenida para usarla si falla la fuente, mostrando fecha y procedencia. Costo pendiente cuando Colaborador registra material; solo Administrador completa/consulta costos. Fase 2 no registra gastos, pedidos ni movimientos de inventario.
+
 ### 5.13 Reportes
 
 - Ventas por período.

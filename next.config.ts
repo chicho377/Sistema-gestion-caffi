@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   agentRules: false,
   poweredByHeader: false,
+  experimental: { serverActions: { bodySizeLimit: "8mb" } },
   // Los enlaces Auth contienen un token de un solo uso en la URL.
   logging: { incomingRequests: false },
   async headers() {

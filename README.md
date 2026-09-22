@@ -1,14 +1,14 @@
-# SIGCA — Fase 1: base y seguridad
+# SIGCA — Configuración y catálogos (Fase 2)
 
-Aplicación privada para un emprendimiento de crochet. Implementada únicamente Fase 1: Next.js App Router, sistema visual, shell responsive, autenticación y administración privada de usuarios. No hay módulos operativos ni métricas ficticias. La fuente funcional sigue siendo `AGENTS.md` y `/docs`; `/reference` se conserva intacto.
+Aplicación privada para caffi crochet. Fase 1 aprobada para desarrollo. Fase 2 incorpora configuración, clientes, categorías, materiales y productos, con imágenes privadas y permisos por rol. El Dashboard conserva su shell sin métricas ficticias; no se implementan pedidos, gastos, movimientos de inventario ni funciones de Fase 3. La fuente funcional sigue siendo `AGENTS.md` y `/docs`; `/reference` se conserva intacto.
 
 ## Requisitos y ejecución local
 
-Node.js 22 o superior (verificado con Node 24), npm y un proyecto Supabase de desarrollo configurado como se indica abajo.
+Node.js 22.18 o superior (verificado con Node 24), npm y un proyecto Supabase de desarrollo configurado como se indica abajo. Las pruebas importan TypeScript usando el soporte nativo de Node.
 
 ```powershell
 npm ci
-Copy-Item .env.example .env.local
+if (!(Test-Path .env.local)) { Copy-Item .env.example .env.local }
 # Completar .env.local con los valores del proyecto, sin compartir sus secretos.
 npm run dev
 ```
@@ -30,7 +30,7 @@ Configurar las variables antes de construir: Next.js incorpora las públicas al 
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto Supabase | Pública |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Clave publicable del mismo proyecto | Pública, protegida por RLS |
-| `SUPABASE_SERVICE_ROLE_KEY` | API administrativa de invitación | Solo servidor |
+| `SUPABASE_SERVICE_ROLE_KEY` | Invitaciones, imágenes validadas y persistencia de cotizaciones | Solo servidor |
 | `AUTH_FLOW_SECRET` | Firma del permiso temporal para establecer contraseña | Solo servidor, aleatorio, mínimo 32 caracteres |
 | `APP_URL` | Origen canónico: `http://localhost:3000` en desarrollo, HTTPS en producción | Solo servidor |
 
@@ -183,6 +183,7 @@ Versiones exactas en `package.json` y lockfile.
 | `lucide-react` | Iconos consistentes |
 | `sonner` | Notificaciones no bloqueantes |
 | `sweetalert2` | Confirmaciones de permisos/estado |
+| `sharp` | Validar bytes de imágenes, limitar dimensiones y recodificar WebP sin metadata |
 | `@fontsource/poppins`, `@fontsource/coiny`, `@fontsource/chewy` | Fuentes locales |
 | `eslint`, `eslint-config-next` | Lint de Next.js/TypeScript |
 | `supabase` (desarrollo) | CLI y creación/aplicación de migraciones |
@@ -230,4 +231,31 @@ Las pruebas automatizadas con sesiones Supabase reales verificaron Dashboard/Usu
 
 Fase 1 validada funcionalmente en desarrollo, con límites explícitos: enlace vencido y contraseñas distintas se cubrieron en pruebas simuladas; enlaces inválido/utilizado también contra Auth real. No se esperó el vencimiento natural del JWT: se probó renovación explícita. Security Advisors mantiene una advertencia de protección contra contraseñas filtradas, disponible desde plan Pro (este proyecto usa Free). No se cambió el plan ni se desplegó en Vercel. El destino de los correos de desarrollo es localhost:3000 y requiere la aplicación ejecutándose en la computadora donde se abre el enlace.
 
-No se avanza a Fase 2. Las decisiones funcionales pendientes para fases futuras permanecen en `docs/DECISIONS.md`; no se resolvieron de forma implícita.
+La Fase 1 fue aprobada por el usuario antes de autorizar Fase 2. El commit de control existente es `75666ab`; el árbol estaba limpio al comenzar.
+
+## Fase 2
+
+- Rutas: `/configuracion` (Admin), `/clientes`, `/categorias`, `/materiales` y `/productos`.
+- Configuración inicial: caffi crochet, teléfono 83639663, correo carolinaserranorodriguez@gmail.com, adelanto 50 %, valor de hora pendiente. Solo Admin modifica configuración.
+- Productos y futuros pedidos en CRC. Materiales en CRC/USD; Colaborador no recibe costos. Su material nuevo queda con costo pendiente.
+- Venta de referencia BCCR mediante [API pública del proveedor](https://tipodecambio.paginasweb.cr/docs), identificada en pantalla. La tasa se guarda en Supabase, se consulta con reutilización de una hora o actualización explícita, y se conserva ante fallo. No requiere variables nuevas ni token. No es una integración directa al webservice autenticado del BCCR.
+- Logo: cargar desde Configuración; ruta autorizada `/api/catalog-image/logo`. La imagen definitiva queda pendiente de que el usuario la aporte.
+- Fotografías JPEG/PNG/WebP de hasta 5 MB y 25 megapíxeles, sin animación; se validan y recodifican en servidor. Bucket `catalog-images` privado; lectura con JWT y RLS por solicitud, sin caché pública.
+- Los registros se desactivan; no hay borrado destructivo. Las cantidades de product_materials son estimaciones y no representan consumo.
+
+Migración: `supabase/migrations/20260922141211_phase2_catalogs.sql`, aplicada únicamente a SIGCA DEV `pysgfnwsycgoneaecgcl` después de pruebas locales y dry-run. Incluye settings, clients, product_categories, materials, material_costs, products, product_materials, product_images, exchange_rates, auditoría y Storage. El detalle de permisos, pruebas y límites está en [PHASE2_VERIFICATION.md](docs/PHASE2_VERIFICATION.md).
+
+La corrección `20260922194304_phase2_exchange_audit.sql` atribuye la actualización de cotizaciones al Admin solicitante, revalidado en BD, mediante RPC de servidor. También aplicada tras pruebas y dry-run; historial anterior conservado.
+
+Las pruebas locales usan PostgreSQL embebido (Auth/Storage mínimos simulados); E2E usa HTTP simulado. `tests/sql/phase2-remote-verification.sql` también se ejecutó contra Postgres DEV con rollback. La prueba real de navegador/API es opt-in, requiere servidor conectado al DEV y cuentas existentes confirmadas:
+
+```powershell
+$env:SIGCA_REAL_TESTS='1'
+$env:SIGCA_TEST_ADMIN_EMAIL='correo-administrador-de-prueba'
+$env:SIGCA_TEST_MEMBER_EMAIL='correo-colaborador-de-prueba'
+node tests/phase2-real.mjs
+```
+
+La prueba real crea registros identificados con VERIFICACION-F2 y los desactiva al finalizar; conserva costos, archivos e historial. No crea usuarios ni cambia contraseñas; usa sesiones aisladas de las cuentas autorizadas. Inactiva temporalmente al Colaborador y restaura su estado. No ejecutar sobre cuentas en operación sin coordinar esa prueba.
+
+No se avanza a Fase 3. Los pendientes funcionales de fases futuras permanecen en `docs/DECISIONS.md`.

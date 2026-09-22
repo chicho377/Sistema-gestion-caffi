@@ -125,6 +125,51 @@ const server = http.createServer(async (req, res) => {
       return reply(403, { message: "Forbidden" });
     return reply(200, null);
   }
+  if (url.pathname.startsWith("/rest/v1/")) {
+    if (!key || revoked.has(key)) return reply(403, { message: "Forbidden" });
+    const table = url.pathname.split("/").at(-1);
+    if (table === "settings")
+      return reply(
+        200,
+        key === "admin"
+          ? {
+              id: "10000000-0000-4000-8000-000000000001",
+              business_name: "caffi crochet",
+              phone: "83639663",
+              email: "test@example.test",
+              currency: "CRC",
+              deposit_percentage: 50,
+              hourly_rate: null,
+              order_number_format: "PED-AAAA-00001",
+              logo_path: null,
+            }
+          : null,
+      );
+    if (table === "exchange_rates")
+      return reply(
+        200,
+        key === "admin"
+          ? {
+              rate_date: "2026-09-22",
+              sell_rate: 450,
+              source: "BCCR via tipodecambio.paginasweb.cr",
+              fetched_at: new Date().toISOString(),
+            }
+          : null,
+      );
+    if (
+      [
+        "clients",
+        "products",
+        "materials",
+        "product_categories",
+        "material_costs",
+      ].includes(table)
+    ) {
+      res.setHeader("content-range", "0-0/0");
+      return reply(200, []);
+    }
+  }
   return reply(404, { message: "Unknown fixture route" });
 });
 server.listen(54329, "127.0.0.1", () =>

@@ -5,7 +5,7 @@
 > Este documento traduce los requerimientos aprobados a una estructura técnica para Codex.  
 > Las decisiones de Next.js, TypeScript y Tailwind CSS forman parte del paquete de implementación acordado; Supabase y Vercel provienen directamente de los requerimientos funcionales.
 
-Las decisiones aprobadas de V1 se registran en [DECISIONS.md](DECISIONS.md). Autorizada la implementación exclusivamente de Fase 1; fases siguientes requieren nueva aprobación.
+Las decisiones aprobadas de V1 se registran en [DECISIONS.md](DECISIONS.md). Fase 1 cerrada para desarrollo; autorizada únicamente Fase 2 adicional, según D-18. Fase 3 requiere nueva aprobación.
 
 ## 1. Objetivos arquitectónicos
 
@@ -328,6 +328,10 @@ Next.js App Router, TypeScript, Tailwind, tokens, layout responsive, acceso Supa
 ### Fase 2 — Configuración y catálogos
 
 Configuración, clientes, categorías, materiales, productos y product_materials. Imágenes privadas. Materiales antes de sus relaciones con productos; productos usan is_active sin status duplicado.
+
+Concreción D-18: configuración solo Administrador; productos en CRC; materiales CRC/USD con costos separados en material_costs (RLS Admin). La venta de referencia del BCCR se obtiene desde servidor mediante tipodecambio.paginasweb.cr; exchange_rates conserva la última tasa válida ante fallos, con fecha y proveedor visibles. Se consulta al abrir Configuración/Materiales como Admin, con reutilización de una hora y actualización explícita. No se garantiza una cotización nueva si la fuente falla; se utiliza la guardada, nunca un valor inventado.
+
+Imágenes en catalog-images privado. Carga exclusiva de servidor, validación de bytes y recodificación WebP; metadatos vinculados por FK. Descarga mediante ruta autorizada con JWT y RLS en cada solicitud, sin caché compartida. Duplicar producto conserva referencias al archivo privado y copia las cantidades estimadas, sin registrar consumo. Desactivar preserva filas e historial. Los listados usan páginas de 25 registros, tarjetas móviles y tablas desde 1024 px. Los importes originales se conservan en numeric; el equivalente CRC es informativo y no fija reglas de redondeo de pedidos.
 
 ### Fase 3 — Pedidos y finanzas
 

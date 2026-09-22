@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { ShieldCheck, LogOut } from "lucide-react";
+import {
+  ShieldCheck,
+  LogOut,
+  Package,
+  Layers,
+  Shapes,
+  Settings,
+} from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { logout } from "@/features/auth/actions";
 export default async function More() {
@@ -21,6 +28,24 @@ export default async function More() {
         <span className="status-pill">
           {profile.role === "admin" ? "Administrador" : "Colaborador"}
         </span>
+        <Link className="button secondary" href="/productos">
+          <Package size={20} />
+          Productos
+        </Link>
+        <Link className="button secondary" href="/materiales">
+          <Layers size={20} />
+          Materiales
+        </Link>
+        <Link className="button secondary" href="/categorias">
+          <Shapes size={20} />
+          Categorías
+        </Link>
+        {profile.role === "admin" && (
+          <Link className="button secondary" href="/configuracion">
+            <Settings size={20} />
+            Configuración
+          </Link>
+        )}
         {profile.role === "admin" && (
           <Link className="button secondary" href="/usuarios">
             <ShieldCheck size={20} />

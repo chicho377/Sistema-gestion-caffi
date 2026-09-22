@@ -8,7 +8,7 @@ export async function proxy(request: NextRequest) {
   const env = publicSupabaseEnv();
   const protectedPath =
     request.nextUrl.pathname === "/" ||
-    /^\/(dashboard|usuarios|mas)(\/|$)/.test(request.nextUrl.pathname);
+    /^\/(dashboard|usuarios|mas|clientes|categorias|materiales|productos|configuracion)(\/|$)/.test(request.nextUrl.pathname);
   const deny = () => {
     const url = new URL("/login", request.url);
     url.searchParams.set("notice", "session");

@@ -646,7 +646,13 @@ Las 17 decisiones de DECISIONS.md ya están aprobadas; no volver a tratarlas com
 
 ## 10. Orden recomendado de migraciones
 
-Este orden es planificación general. Solo se autorizan ahora migraciones de Fase 1: perfiles/roles, autorización y auditoría inicial. No crear aún configuración financiera ni tablas de módulos posteriores.
+Este orden es planificación general. Fase 1 cerrada; autorizadas migraciones de Fase 2 para configuración, clientes, categorías, materiales, productos, relaciones, imágenes privadas y auditoría. No crear tablas de Fase 3 ni movimientos/stock real.
+
+Concreción técnica de Fase 2: `settings` de fila única con RLS de Administrador; catálogo `materials` sin columnas financieras; costos/moneda en `material_costs` con RLS exclusiva de Administrador y FK al material. Ausencia de fila de costo significa pendiente, según D-18. Esta separación impide filtrar costos mediante SELECT *, filtros o respuestas de escritura. Monto original numeric sin redondeo persistido; equivalente CRC calculado con venta de referencia del BCCR publicada por tipodecambio.paginasweb.cr. `exchange_rates` conserva tasa, fecha del dato y de consulta; solo servidor escribe y Admin consulta. Ante fallo se conserva la última tasa, sin reemplazar el importe original ni afectar históricos. `product_images` especializa los metadatos de archivos con FK real a products. No se crea el modelo polimórfico de archivos de fases posteriores.
+
+La migración física añade `is_active` en asociaciones e imágenes para conservar historial. `product_images.is_main` tiene índice único parcial por producto; el cambio de principal es transaccional. La inserción de imágenes requiere RPC exclusivo de service_role tras validación del archivo en servidor y revalidación del actor activo en BD. No existen grants DELETE para roles de aplicación. Triggers registran antes/después en audit_log, únicamente legible por Admin. Las funciones SECURITY DEFINER residen en private con search_path vacío y EXECUTE restringido; wrappers públicos son SECURITY INVOKER.
+
+La sincronización de exchange_rates usa store_exchange_rate exclusivo de service_role; verifica actor Admin activo en BD y lo atribuye en auditoría. No se permite escritura directa de cotizaciones desde la API cliente ni desde la tabla con service_role.
 
 1. perfiles/roles y configuración;
 2. infraestructura de auditoría antes de operaciones trazables;
