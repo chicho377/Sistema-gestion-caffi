@@ -21,7 +21,13 @@ export default function RootLayout({
           Saltar al contenido
         </a>
         {children}
-        <Toaster richColors position="top-center" closeButton />
+        <Toaster
+          richColors
+          position="top-center"
+          closeButton
+          offset={{ top: 88 }}
+          mobileOffset={{ top: 88 }}
+        />
       </body>
     </html>
   );

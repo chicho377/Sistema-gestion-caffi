@@ -93,7 +93,9 @@ Referencias oficiales: [SSR](https://supabase.com/docs/guides/auth/server-side/c
 4. Verificar `profiles` y el evento de auditoría. La provisión manual registra actor nulo porque se ejecuta por mantenimiento, no por una sesión de la aplicación.
 5. Entrar en SIGCA. Desde **Más → Usuarios** (también sidebar en escritorio), invitar a las demás personas. Reciben correo y comienzan como Colaborador. La promoción de otra persona es una acción explícita con confirmación. La app y la base impiden cambiar el propio rol.
 
-La cuenta administradora inicial debe crearse con **Create user**, no mediante una invitación manual del Dashboard sin `RedirectTo`: las invitaciones normales se envían desde SIGCA con el enlace correcto.
+La cuenta administradora inicial debe crearse con **Create user**. Como alternativa autorizada para este desarrollo, se provisionó mediante `auth.admin.createUser` con correo confirmado y sin generar contraseña, se aplicó el mismo bloque SQL protegido y se envió recuperación para que el titular establezca su contraseña personalmente. Las invitaciones normales se envían desde SIGCA con el enlace correcto.
+
+El primer Administrador de SIGCA desarrollo ya está provisionado y auditado. No repetir el bootstrap.
 
 ## Migración, políticas y auditoría
 
@@ -126,7 +128,7 @@ La invitación cruza Auth y PostgreSQL, sin una transacción única entre ambos 
 - GET del enlace no consume el token: la persona pulsa Continuar y el servidor verifica el hash de invitación/recuperación. Después se emite una cookie HttpOnly firmada y vinculada al usuario por 15 minutos, como permiso técnico de cambio. Se elimina tras guardar o cerrar sesión. No se almacenan contraseñas en tablas ni logs de aplicación.
 - Fuentes locales mediante Fontsource: evita depender de Google Fonts durante build o cargar fuentes desde terceros en cada visita.
 - Confirmaciones críticas con SweetAlert2, guardados con Sonner, navegación tablet con `dialog` nativo y foco contenido. Respeto de `prefers-reduced-motion`.
-- `agentRules: false` evita que Next.js modifique automáticamente `AGENTS.md`.
+- `agentRules: false` evita que Next.js modifique automáticamente `AGENTS.md`. El log de solicitudes de desarrollo está deshabilitado para no registrar tokens de un solo uso incluidos en URLs de Auth.
 - La desactivación es reversible. No se añadió una regla nueva de “último administrador”: el sistema no debe usarse para desactivar la única cuenta administradora sin prever recuperación operativa.
 
 ## Archivos relevantes
@@ -206,7 +208,7 @@ Las pruebas SQL ejecutan la migración real en PGlite, con roles `anon`/`authent
 
 Los E2E ejecutan la app y SDK reales contra un servicio HTTP Auth/datos simulado. Comprueban login/logout, recuperación, invitación, nueva contraseña, errores de enlace, usuario inactivo, rutas por rol, expiración, confirmaciones, reducción de movimiento y ausencia de desbordamiento en 320, 375, 768, 1024 y 1440 px. No demuestran entrega SMTP ni sustituyen integración real con Supabase.
 
-## Verificación real pendiente antes de dar la fase por validada en Supabase
+## Resultados y cierre de Fase 1 en desarrollo
 
 Resultados de la verificación local de esta entrega:
 
@@ -222,13 +224,10 @@ Resultados de la verificación local de esta entrega:
 | Preservación | Sin cambios en AGENTS.md, reference ni DESIGN_SYSTEM.md |
 | Secretos cliente | Sin referencias a claves administrativas o secreto del flujo en assets estáticos de producción |
 
-La validación local inicial utilizó servicios de prueba y no envió correos reales. La migración ya está aplicada en SIGCA desarrollo: las versiones local/remota coinciden, el dry-run posterior no tiene pendientes, las pruebas SQL remotas pasaron con rollback completo y Security Advisors no reporta hallazgos. El detalle está en [PHASE1_SUPABASE_VERIFICATION.md](docs/PHASE1_SUPABASE_VERIFICATION.md). Todavía falta configurar/verificar Auth alojado y completar este recorrido con cuentas y correos reales:
+La migración está aplicada en SIGCA desarrollo y las pruebas SQL remotas pasaron con rollback completo. Auth alojado, SMTP, plantillas y `.env.local` están configurados. Administrador y Colaborador están activos. El titular confirmó los recorridos reales de correo, establecimiento/cambio de contraseña y acceso; Auth y auditoría corroboran las operaciones.
 
-1. Confirmar que un intento directo de signup público falla en Supabase, no solo que no hay pantalla de registro.
-2. Acceder con el primer Administrador e invitar un correo propio de prueba; abrir el correo, establecer contraseña y entrar como Colaborador.
-3. Confirmar que Colaborador no accede a `/usuarios`, no cambia roles/estado mediante API y no lee auditoría.
-4. Conservar abierta una sesión de Colaborador y desactivarlo desde otra cuenta admin. Comprobar rechazo inmediato de operaciones y retirada del shell al siguiente chequeo.
-5. Recuperar contraseña por Google SMTP; probar enlace válido, usado y vencido, coincidencia de contraseñas y regreso al login.
-6. Confirmar logout, renovación de sesión, auditoría y restricciones en Security Advisors. Revisar que claves administrativas no estén en assets del navegador.
+Las pruebas automatizadas con sesiones Supabase reales verificaron Dashboard/Usuarios por rol, invitación desde SIGCA, denegaciones por API/RLS, desactivación inmediata con sesión previa, retirada de acceso en UI, reactivación sin cambio de rol, renovación y logout. Los cinco tamaños también se comprobaron con datos reales. Para no recopilar contraseñas, esas pruebas usaron sesiones aisladas creadas mediante Auth Admin; no sustituyen el recorrido personal por correo. El detalle está en [PHASE1_SUPABASE_VERIFICATION.md](docs/PHASE1_SUPABASE_VERIFICATION.md).
+
+Fase 1 validada funcionalmente en desarrollo, con límites explícitos: enlace vencido y contraseñas distintas se cubrieron en pruebas simuladas; enlaces inválido/utilizado también contra Auth real. No se esperó el vencimiento natural del JWT: se probó renovación explícita. Security Advisors mantiene una advertencia de protección contra contraseñas filtradas, disponible desde plan Pro (este proyecto usa Free). No se cambió el plan ni se desplegó en Vercel. El destino de los correos de desarrollo es localhost:3000 y requiere la aplicación ejecutándose en la computadora donde se abre el enlace.
 
 No se avanza a Fase 2. Las decisiones funcionales pendientes para fases futuras permanecen en `docs/DECISIONS.md`; no se resolvieron de forma implícita.
