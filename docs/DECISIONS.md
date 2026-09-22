@@ -71,6 +71,12 @@ Los reportes principales de V1 se exportan tanto a Excel como a PDF, respetando 
 
 RLS en todas las tablas empresariales. Vistas de reportes respetan permisos. Usuarios inactivos pierden capacidad de operar incluso con una sesión previa. Los secretos y claves privilegiadas permanecen fuera del navegador.
 
+## 17. Alta de usuarios V1 — D-17
+
+No habrá registro público. El primer Administrador se provisiona manualmente una sola vez en Supabase. Después, solo un Administrador puede crear o invitar usuarios desde el sistema, exclusivamente desde servidor mediante capacidades administrativas de Supabase. Nunca exponer `service_role` al frontend.
+
+Los nuevos usuarios tienen inicialmente rol `collaborator`, salvo acción administrativa explícita autorizada, y un registro correspondiente en `profiles`. El invitado recibe correo para establecer/confirmar acceso. Solo Administrador modifica rol o estado; ningún usuario cambia su propio rol ni se eleva privilegios. La implementación V1 utilizará invitación por correo como flujo de alta.
+
 ## Trazabilidad
 
 | Decisiones | Requisitos afectados | Modelo / arquitectura |
@@ -86,6 +92,7 @@ RLS en todas las tablas empresariales. Vistas de reportes respetan permisos. Usu
 | D-13 | RF-AUD, RF-HOR-10 | audit_log desde fase inicial |
 | D-14 | RF-PRO-01/02 | products.is_active |
 | D-15 | reportes, RNF-009 | exportaciones Excel y PDF autorizadas |
+| D-17 | RF-USR-05 | Auth Admin en servidor, profiles y administración de usuarios |
 
 ## Decisiones pendientes y momento de resolución
 
@@ -96,9 +103,8 @@ No bloquean la base técnica; sí deben resolverse antes de implementar el compo
 - **Montos y cambios de pedido:** precisión/redondeo, pagos de monto cero, caso de total cero, actualización de condiciones tras confirmar/cobrar y momento de fijación del adelanto original. Reducir el total por debajo de pagos válidos no puede generar un sobrepago.
 - **Reportes históricos:** tratamiento de ventas confirmadas posteriormente canceladas, cambios/reaperturas posteriores a la entrega y corte de costos para ganancia realizada. No anular ingresos válidos por una cancelación.
 - **Numeración e históricos:** año de emisión o año de `order_date` en cargas históricas; reglas para registros retroactivos. No se fija una restricción de fecha de entrega sin aprobación.
-- **Usuarios:** mecanismo de alta/invitación y provisión del primer Administrador. No introducir registro público por defecto.
 - **Antes de producción:** retención/eliminación de archivos, plan de Supabase, ambientes y respaldo/recuperación de base y archivos.
 
 ## Estado de implementación
 
-Esta entrega autoriza y contiene únicamente documentación. No autoriza en esta etapa código de aplicación, instalación de dependencias ni creación de migraciones.
+Autorizada únicamente la Fase 1 — Base y seguridad, incluyendo proyecto, dependencias, autenticación, administración de usuarios, perfiles, RLS y auditoría inicial. Dashboard como shell sin métricas ficticias. No avanzar a Fase 2 sin aprobación. AGENTS.md y reference permanecen intactos; esta actualización de docs incorpora D-17.

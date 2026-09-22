@@ -130,6 +130,10 @@ Como mínimo: Administrador y Colaborador.
 
 Administrador tiene acceso completo conforme a las reglas de integridad e historial. Colaborador trabaja con clientes, productos, pedidos, cronómetro, inventario y envíos; registra pagos y gastos; consulta saldo pendiente necesario para operar pedidos. No administra usuarios, modifica configuración financiera, realiza anulaciones financieras, modifica sesiones históricas ni consulta auditoría, costos, márgenes o reportes financieros globales. Registrar gastos requiere ingresar su monto, sin habilitar consulta financiera general. Aplicar restricciones en datos y servicios, además de UI.
 
+**RF-USR-05 — Alta privada V1**
+
+Sin registro público. Primer Administrador provisionado manualmente una sola vez en Supabase. Después, únicamente Administrador crea/invita usuarios mediante capacidades administrativas de Supabase ejecutadas exclusivamente en servidor. Inicialmente `collaborator`, salvo acción administrativa explícita autorizada; siempre con registro en `profiles`. El invitado recibe correo para establecer/confirmar acceso. Solo Administrador modifica rol/estado y ningún usuario modifica su propio rol ni se eleva privilegios. `service_role` nunca se expone al navegador.
+
 ### 5.2 Clientes
 
 **RF-CLI-01 — Mantenimiento**  

@@ -47,6 +47,8 @@ Valores iniciales:
 
 Solo Administrador administra usuarios/roles/estado. El acceso verifica el estado vigente del perfil incluso con una sesión anterior; no basta una comprobación al iniciar sesión.
 
+Alta V1 (D-17): registro público deshabilitado en Supabase Auth; primer Administrador provisionado manualmente una sola vez. Después, invitación por correo solo desde servidor mediante Auth Admin, comprobando Administrador activo. Crear profiles por trigger confiable al insertar auth.users, siempre collaborator/active sin confiar en metadata del cliente para autorización. Promoción posterior solo por acción administrativa explícita. Prohibir que cualquier usuario cambie su propio rol; solo Administrador cambia rol/estado de usuarios. Clave administrativa nunca pública. El correo de invitación permite establecer/confirmar acceso.
+
 ### 2.2 clients
 
 - `id uuid PK`
@@ -640,11 +642,11 @@ Costos y horas atribuibles mediante `order_item_id`, conservando `order_id`. No 
 
 ## 9. Decisiones aprobadas y pendientes
 
-Las 16 decisiones de DECISIONS.md ya están aprobadas; no volver a tratarlas como preguntas abiertas. Su sección de pendientes delimita valoración de inventario, costos comunes, redondeo/cambios históricos, numeración retroactiva, alta de usuarios, retención y respaldos. Esos puntos se resuelven antes de implementar el comportamiento afectado. Reembolsos fuera de V1.
+Las 17 decisiones de DECISIONS.md ya están aprobadas; no volver a tratarlas como preguntas abiertas. Su sección de pendientes delimita valoración de inventario, costos comunes, redondeo/cambios históricos, numeración retroactiva, retención y respaldos. Alta de usuarios resuelta por D-17. Esos puntos se resuelven antes de implementar el comportamiento afectado. Reembolsos fuera de V1.
 
 ## 10. Orden recomendado de migraciones
 
-Este orden es planificación; no crear migraciones en la etapa documental actual.
+Este orden es planificación general. Solo se autorizan ahora migraciones de Fase 1: perfiles/roles, autorización y auditoría inicial. No crear aún configuración financiera ni tablas de módulos posteriores.
 
 1. perfiles/roles y configuración;
 2. infraestructura de auditoría antes de operaciones trazables;

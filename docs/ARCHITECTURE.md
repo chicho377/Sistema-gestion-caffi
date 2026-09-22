@@ -5,7 +5,7 @@
 > Este documento traduce los requerimientos aprobados a una estructura técnica para Codex.  
 > Las decisiones de Next.js, TypeScript y Tailwind CSS forman parte del paquete de implementación acordado; Supabase y Vercel provienen directamente de los requerimientos funcionales.
 
-Las decisiones aprobadas de V1 se registran en [DECISIONS.md](DECISIONS.md). Esta actualización es documental: no incluye código, dependencias ni migraciones.
+Las decisiones aprobadas de V1 se registran en [DECISIONS.md](DECISIONS.md). Autorizada la implementación exclusivamente de Fase 1; fases siguientes requieren nueva aprobación.
 
 ## 1. Objetivos arquitectónicos
 
@@ -156,7 +156,9 @@ Login
 - `service_role` solo servidor si alguna operación privilegiada la requiere.
 - Credenciales SMTP nunca llegan al cliente.
 
-Administrador tiene acceso completo sujeto a integridad e historial. Colaborador opera clientes, productos, pedidos, cronómetro, inventario y envíos; registra pagos/gastos y consulta saldo operativo. No administra usuarios, modifica configuración financiera, anula movimientos financieros, modifica sesiones históricas ni consulta auditoría, costos, márgenes o reportes financieros globales. Alta/invitación y provisión del primer Administrador pendientes; no asumir registro público.
+Administrador tiene acceso completo sujeto a integridad e historial. Colaborador opera clientes, productos, pedidos, cronómetro, inventario y envíos; registra pagos/gastos y consulta saldo operativo. No administra usuarios, modifica configuración financiera, anula movimientos financieros, modifica sesiones históricas ni consulta auditoría, costos, márgenes o reportes financieros globales.
+
+Alta V1 (D-17): registro público deshabilitado, primer Administrador provisionado manualmente una sola vez en Supabase. Después se invita por correo desde el sistema, solo por Administrador activo verificado en servidor. Usar Auth Admin exclusivamente en servidor con secreto no público; el nuevo perfil siempre inicia `collaborator`. Cambios de rol/estado son acciones administrativas explícitas; impedir cambios del propio rol también en base de datos. Cada usuario Auth dispone de profiles y el correo permite establecer/confirmar acceso.
 
 ## 6. Separación de datos de negocio
 
@@ -321,7 +323,7 @@ Registrar decisiones aprobadas, matriz de permisos, fórmulas y trazabilidad req
 
 ### Fase 1 — Base y seguridad
 
-Next.js, TypeScript, Tailwind, tokens, layout responsive, acceso Supabase cliente/servidor y ambientes. Auth, login/logout, recuperación/reset, perfiles y roles, rutas protegidas, RLS y permisos. Infraestructura de auditoría antes de primeras operaciones trazables.
+Next.js App Router, TypeScript, Tailwind, tokens, layout responsive, acceso Supabase cliente/servidor y ambientes. Auth, login/logout, recuperación/reset, perfiles y roles, rutas protegidas, RLS y permisos. Invitación privada y administración de roles/estado según D-17. Infraestructura de auditoría antes de primeras operaciones trazables. Dashboard únicamente como shell visual sin métricas de negocio ficticias.
 
 ### Fase 2 — Configuración y catálogos
 
