@@ -5,6 +5,8 @@
 > Este documento es una propuesta de implementación derivada de los requerimientos aprobados.  
 > Los nombres físicos pueden ajustarse durante las migraciones, pero no deben perderse las responsabilidades, relaciones ni reglas de negocio descritas aquí.
 
+Decisiones aprobadas: [DECISIONS.md](DECISIONS.md). Este documento no constituye una migración. Las soluciones físicas marcadas como propuestas técnicas se concretarán durante implementación sin alterar las reglas aprobadas.
+
 ## 1. Principios
 
 - PostgreSQL en Supabase.
@@ -12,12 +14,14 @@
 - `created_at` y `updated_at` en entidades principales.
 - Evitar borrado físico de información histórica/financiera.
 - Usar `is_active`, `status`, `cancelled_at`, `voided_at` o equivalente según el dominio.
-- RLS en tablas sensibles.
+- RLS en todas las tablas empresariales y acceso restringido en vistas y funciones.
 - FKs explícitas.
 - Constraints para datos críticos.
 - Índices para claves foráneas y filtros frecuentes.
 - Timestamps con zona horaria para eventos.
 - Fechas de entrega como `date` cuando no se requiera hora.
+- Calendario del negocio: `America/Costa_Rica`, semana desde lunes.
+- Proyecto equivale a pedido en V1; no existe tabla `projects`.
 
 ## 2. Entidades
 
@@ -40,6 +44,8 @@ Valores iniciales:
 
 - role: `admin`, `collaborator`
 - status: `active`, `inactive`
+
+Solo Administrador administra usuarios/roles/estado. El acceso verifica el estado vigente del perfil incluso con una sesión anterior; no basta una comprobación al iniciar sesión.
 
 ### 2.2 clients
 
@@ -73,7 +79,6 @@ Regla: cliente con historial se desactiva, no se destruye.
 - `base_price numeric not null`
 - `estimated_minutes integer nullable`
 - `is_customizable boolean default false`
-- `status text`
 - `main_image_path text nullable`
 - `is_active boolean default true`
 - `created_at`
@@ -106,6 +111,9 @@ Encabezado del pedido.
 - `subtotal numeric default 0`
 - `total numeric not null`
 - `deposit_percentage numeric nullable`
+- `deposit_required_amount numeric` — monto originalmente solicitado, conservado históricamente.
+- `confirmed_at timestamptz nullable` — marca de confirmación de venta.
+- `delivered_at timestamptz nullable` — marca de entrega para ganancia realizada por período.
 - `notes text nullable`
 - `cancel_reason text nullable`
 - `cancelled_at timestamptz nullable`
@@ -120,7 +128,7 @@ Estados productivos:
 - `in_production`
 - `ready`
 - `delivered`
-- `cancelled` puede modelarse como estado especial o bandera consistente con los requerimientos.
+- `cancelled` — representación técnica propuesta de cancelación; coherente con `cancelled_at` y motivo obligatorio.
 
 Estados financieros:
 
@@ -129,6 +137,16 @@ Estados financieros:
 - `paid`
 
 Regla: la alerta de fecha no se almacena como dato permanente; se deriva de `requested_delivery_date` y estado.
+
+Reglas aprobadas y garantías técnicas:
+
+- `subtotal = SUM(quantity × unit_price - descuento de línea)`; `total = subtotal - discount_amount` del pedido. Cada descuento se aplica una sola vez.
+- Adelanto solicitado = total final × porcentaje / 100, conforme al redondeo por definir. Conservar el monto original; no regenerarlo silenciosamente al editar el pedido o la configuración.
+- Totales y estado financiero deben mantenerse coherentes mediante operaciones de base de datos; no aceptar valores arbitrarios calculados únicamente por el cliente.
+- Suma de pagos válidos nunca mayor que el total en V1, incluso al editar líneas o descuentos y bajo concurrencia.
+- Cancelación permitida con pagos; no cambia su validez ni su reconocimiento como ingresos. Motivo obligatorio y auditoría. Sin reembolsos en V1.
+- `confirmed_at` se registra al pasar de Cotización a Confirmado; `delivered_at` al entregar el pedido. La entrega del envío no asigna esta marca silenciosamente. Reaperturas y cambios históricos requieren la política pendiente en DECISIONS.md.
+- Consecutivo inicial `PED-AAAA-00001`, reinicio anual, asignación atómica en servidor/base de datos e identificador estable. Propuesta técnica: contador por año protegido por transacción, además de unicidad de `order_number`; nunca `MAX + 1` sin protección concurrente.
 
 ### 2.7 order_items
 
@@ -146,6 +164,8 @@ Detalle del pedido.
 - `notes text nullable`
 
 Snapshot recomendado para conservar el nombre/precio histórico aunque el producto cambie.
+
+`line_total = quantity × unit_price - discount_amount`. Un vínculo de sesión, consumo o costo a esta línea debe comprobar también pertenencia al mismo `order_id` (por ejemplo, mediante FK compuesta como solución técnica).
 
 ### 2.8 payments
 
@@ -182,31 +202,33 @@ Estados:
 
 Saldo del pedido = total - SUM(payments.amount WHERE status='valid').
 
-### 2.9 income
+Fuente oficial de ingresos de pedidos. No genera fila adicional de ingreso. `payment_date` es la fecha efectiva de recepción. Garantizar que `client_id` corresponde al cliente del pedido. Registro y validación de saldo deben ser atómicos frente a pagos concurrentes. Solo Administrador puede anular; conservar motivo, actor y fecha. Pagos válidos de pedidos cancelados siguen contando como ingresos.
 
-Movimientos de dinero recibido.
+### 2.9 manual_income
+
+Dinero recibido que no proviene de pedidos. No contiene `order_id` ni `payment_id`: si procede de un pedido se registra en `payments`.
 
 - `id uuid PK`
-- `order_id uuid FK nullable`
-- `payment_id uuid FK nullable`
-- `income_date timestamptz`
+- `income_date timestamptz not null` — fecha efectiva de recepción.
 - `amount numeric not null`
 - `income_type text`
 - `payment_method text nullable`
 - `description text nullable`
+- `status text default 'valid'`
+- `void_reason text nullable`
+- `voided_at timestamptz nullable`
+- `voided_by uuid FK -> profiles.id nullable`
 - `created_by uuid`
 - `created_at`
 
 Tipos iniciales:
 
-- `deposit`
-- `final_payment`
 - `product_sale`
 - `cards`
 - `stickers`
 - `other`
 
-Nota de implementación: evitar duplicar impacto financiero entre `payments` e `income`. Definir en migración/servicio si un pago genera automáticamente un ingreso y cuál tabla se usa como fuente para cada reporte.
+Las clasificaciones adelanto y pago final corresponden a pagos de pedidos. Los demás tipos solo se usan aquí cuando el ingreso no procede de un pedido. Correcciones conservan historial mediante anulación autorizada; no se concede gestión de ingresos manuales al Colaborador. No existe tabla `income` duplicando pagos. El reporte combina pagos válidos y `manual_income` válidos, identificando origen e ID.
 
 ### 2.10 expense_categories
 
@@ -229,6 +251,7 @@ Categorías iniciales:
 
 - `id uuid PK`
 - `order_id uuid FK nullable`
+- `order_item_id uuid FK nullable` — costo atribuible a una línea del mismo pedido.
 - `category_id uuid FK not null`
 - `expense_date timestamptz not null`
 - `amount numeric not null`
@@ -239,8 +262,11 @@ Categorías iniciales:
 - `status text default 'valid'`
 - `void_reason text nullable`
 - `voided_at timestamptz nullable`
+- `voided_by uuid FK -> profiles.id nullable`
 - `created_by uuid`
 - `created_at`
+
+Reconocimiento por `expense_date`. Colaborador puede registrar el gasto y su monto, sin obtener acceso general a costos ni reportes financieros. Anulación reservada a Administrador. La vinculación con una línea no implica por sí sola que todo egreso sea un costo adicional: definir la relación con compras/consumos y envíos antes de sumar rentabilidad, evitando duplicaciones.
 
 ### 2.12 materials
 
@@ -257,11 +283,14 @@ Categorías iniciales:
 
 No usar una edición directa de stock como fuente de verdad.
 
+`unit_cost` es un parámetro actual, nunca fuente para recalcular consumos históricos. Es dato de costeo no consultable por Colaborador. Método de valoración pendiente; no asumir promedio ni FIFO.
+
 ### 2.13 inventory_movements
 
 - `id uuid PK`
 - `material_id uuid FK not null`
 - `order_id uuid FK nullable`
+- `order_item_id uuid FK nullable` — pertenece al mismo pedido.
 - `movement_type text not null`
 - `quantity numeric not null`
 - `unit_cost numeric nullable`
@@ -275,15 +304,21 @@ Tipos:
 - `consumption`
 - `positive_adjustment`
 - `negative_adjustment`
-- `return`
+- `return` — devolución al inventario, incrementa stock; no representa devolución a proveedor.
 
 Stock actual = suma firmada de movimientos.
+
+Entradas, ajustes positivos y devoluciones suman; consumos y ajustes negativos restan. Cantidades positivas decimales. `unit_cost` guarda el costo aplicado histórico y es obligatorio en consumos; no se sustituye por `materials.unit_cost` al consultar. La forma de seleccionar ese costo y valorar devoluciones permanece pendiente.
+
+No permitir stock negativo en operación normal: comprobar y registrar salidas atómicamente ante concurrencia. Ajustes manuales requieren motivo y auditoría. No editar existencias directamente ni otorgar al Colaborador lectura del costo unitario. Cuando corresponda, el consumo puede atribuirse a una línea del pedido.
 
 ### 2.14 work_sessions
 
 - `id uuid PK`
 - `order_id uuid FK not null`
+- `order_item_id uuid FK nullable` — pertenece al mismo pedido.
 - `user_id uuid FK not null`
+- `hourly_rate_applied numeric not null` — tarifa histórica aplicada al iniciar la sesión.
 - `activity text nullable`
 - `status text not null`
 - `started_at timestamptz not null`
@@ -297,6 +332,8 @@ Estados:
 - `running`
 - `paused`
 - `finished`
+
+Cambios de tarifa configurada no recalculan esta sesión. Ajustes históricos solo por Administrador, con motivo y auditoría que conserve valores anteriores y nuevos. Colaborador opera el cronómetro sin consultar tarifas o costos de mano de obra. La duración alimenta costeo con `hourly_rate_applied`, nunca con la tarifa actual.
 
 ### 2.15 work_pauses
 
@@ -312,9 +349,15 @@ Duración neta:
 
 Para sesión activa, la UI calcula tiempo transcurrido con marcas persistidas.
 
+El cálculo debe descontar también la pausa abierta hasta el instante de consulta o finalización. La forma de finalizar desde pausa se documentará explícitamente en el flujo; no contar ese intervalo como trabajo. Propuestas técnicas: una pausa abierta por sesión, validación de intervalos sin solapamiento y transacciones para cambios de estado. Las correcciones deben mantener consistencia de sesión y pausas.
+
 Restricción lógica crítica: máximo una sesión `running` o `paused` por usuario.
 
+Garantizarla en base de datos mediante unicidad parcial, no solo con deshabilitar botones.
+
 ### 2.16 shipments
+
+En V1 existe como máximo un registro por pedido. Marcarlo Entregado no modifica el pedido; la interfaz puede ofrecer una acción explícita adicional. El costo asumido por el negocio debe incluirse una sola vez en rentabilidad, aun si existe un gasto relacionado. Su atribución a líneas y vínculo con gastos quedan sujetos a la política de costos compartidos.
 
 - `id uuid PK`
 - `order_id uuid FK unique not null`
@@ -352,6 +395,8 @@ Estados:
 
 Metadatos de archivos almacenados en Supabase Storage.
 
+Acceso privado por defecto, autorizado según entidad y rol. `entity_type/entity_id` exige validación de existencia y autorización; no proporciona por sí solo una FK a todas las entidades. Definir protección contra referencias huérfanas y coherencia con rutas principales de productos/comprobantes. Retención pendiente; no borrar históricos por cascada.
+
 - `id uuid PK`
 - `entity_type text`
 - `entity_id uuid`
@@ -385,9 +430,15 @@ Opción A, fila única tipada:
 - `default_deposit_percentage numeric default 50`
 - `hourly_rate numeric`
 - `order_number_format text`
+- `business_timezone text default 'America/Costa_Rica'`
+- `week_starts_on integer default 1` — lunes.
 - `updated_at`
 
+Zona horaria y semana representan la decisión aprobada; no implican una nueva opción de edición. Solo Administrador modifica configuración financiera. La tarifa actual se copia al iniciar sesiones, sin alterar las anteriores. Formato inicial aprobado `PED-AAAA-00001` con reinicio anual. Propuesta técnica: preferir fila única tipada, con unicidad garantizada.
+
 ### 2.19 audit_log
+
+Disponible antes de la primera operación trazable. Registro generado por operaciones confiables, no editable por usuarios ordinarios; Colaborador no consulta auditoría. Propuesta técnica: captura transaccional de eventos y valores anteriores/nuevos relevantes, sin secretos en metadata.
 
 - `id uuid PK`
 - `user_id uuid nullable`
@@ -421,7 +472,6 @@ clients
    └── orders
          ├── order_items ──> products
          ├── payments
-         ├── income
          ├── expenses
          ├── work_sessions
          │      └── work_pauses
@@ -431,6 +481,13 @@ clients
 
 products
    └── product_materials ──> materials
+
+order_items
+   ├── work_sessions (opcional, mismo pedido)
+   ├── inventory_movements (opcional, mismo pedido)
+   └── expenses (opcional, mismo pedido)
+
+manual_income (sin pedido) + payments válidos ──> reporte seguro de ingresos
 ```
 
 ## 4. Reglas de integridad sugeridas
@@ -443,11 +500,13 @@ Excepciones solo si existe una operación explícita y documentada.
 
 ### Cantidades
 
-`CHECK quantity > 0` para líneas, pagos y movimientos donde aplique.
+`CHECK quantity > 0` para líneas y movimientos; permitir decimales. En pagos el campo es `amount`, no `quantity`; aceptación de monto cero pendiente.
 
 ### Adelanto
 
 `CHECK deposit_percentage BETWEEN 0 AND 100`.
+
+Descuentos no negativos ni superiores al importe correspondiente; totales no negativos. Monto de adelanto original conservado sin sobrescritura automática. Precisión y redondeo por definir antes de operaciones financieras.
 
 ### Fechas
 
@@ -464,19 +523,24 @@ Preferir enums PostgreSQL o constraints/checks explícitos si el equipo desea es
 - `orders(production_status)`
 - `orders(financial_status)`
 - `payments(order_id, status)`
-- `income(order_id)`
+- `payments(payment_date)`
+- `manual_income(income_date, status)`
+- `orders(confirmed_at)`
+- `orders(delivered_at)`
 - `expenses(order_id)`
 - `inventory_movements(material_id)`
 - `inventory_movements(order_id)`
 - `work_sessions(order_id)`
 - `work_sessions(user_id, status)`
+- unicidad parcial de `work_sessions(user_id)` para estados `running/paused`;
+- índices de `order_item_id` en sesiones, consumos y gastos;
 - `shipments(order_id)`
 - `audit_log(entity_type, entity_id)`
 - `audit_log(user_id, created_at)`
 
-## 6. RLS — intención
+## 6. RLS y autorización
 
-Las políticas exactas dependen de los permisos finales, pero como mínimo:
+RLS en todas las tablas empresariales desde su creación, con privilegios mínimos y políticas por operación. Matriz aprobada en DECISIONS.md, D-01 y D-16; no basta ocultar controles en UI.
 
 ### Usuario autenticado activo
 
@@ -484,7 +548,7 @@ Puede leer/operar según su rol.
 
 ### Usuario inactivo
 
-No debe poder operar.
+No debe poder acceder a datos empresariales ni operar incluso con sesión previa. Verificar estado vigente en operaciones de datos, funciones y acceso autorizado a Storage; no depender únicamente de claims antiguos.
 
 ### Anónimo
 
@@ -496,7 +560,11 @@ Acceso completo conforme a reglas del sistema.
 
 ### Collaborator
 
-Permisos operativos definidos por el proyecto.
+Opera clientes, productos, pedidos, cronómetro, inventario y envíos; registra pagos/gastos y consulta saldo operativo. No administra usuarios ni configuración financiera, no realiza anulaciones financieras, no modifica sesiones históricas y no consulta auditoría, costos, márgenes ni reportes financieros globales.
+
+RLS filtra filas, no oculta por sí sola columnas sensibles. Propuesta técnica: separar atributos financieros o restringir privilegios de columnas y exponer proyecciones/operaciones seguras para Colaborador. Esto aplica a tarifas de sesiones, costos de materiales/movimientos/envíos y resúmenes de trabajo. Registrar un gasto permite proporcionar su monto sin conceder lectura financiera general. Respuestas de escritura, errores, exportaciones y vistas tampoco deben filtrar datos restringidos.
+
+El rol/estado no puede elevarse mediante edición del propio perfil. Servicios privilegiados verifican actor activo y permisos; no sustituir autorización con `service_role`. Vistas de reportes deben conservar RLS (por ejemplo, `security_invoker` cuando corresponda) y los privilegios por rol. Un resumen de tiempo para Colaborador no incluye costo de mano de obra.
 
 No implementar políticas abiertas tipo “authenticated = full access” sin revisar qué acciones debe poder ejecutar cada rol.
 
@@ -509,9 +577,19 @@ Buckets o carpetas lógicas:
 - `receipts/`
 - `business/`
 
-Revisar si deben ser públicos o privados. Por defecto, comprobantes y documentos sensibles deben mantenerse privados.
+Almacenamiento privado por defecto para productos, pedidos, comprobantes y negocio. Acceso mediante mecanismos autorizados de Supabase Storage, con políticas sobre objetos además de metadatos. Comprobantes nunca públicos. Política de retención/eliminación pendiente.
 
 ## 8. Vistas / cálculos útiles
+
+Todas las vistas/consultas respetan rol y estado vigente. Los reportes financieros globales y costos son exclusivos de Administrador; los resúmenes operativos para Colaborador exponen únicamente datos permitidos.
+
+### income_report
+
+Combina pagos válidos por `payment_date` e ingresos manuales válidos por `income_date`, conservando origen e ID. No crea filas de ingreso por pago ni excluye pagos válidos porque el pedido fue cancelado.
+
+### Períodos de negocio
+
+Agrupar en `America/Costa_Rica`, semana desde lunes. Ventas se confirman en `confirmed_at`; gastos se reconocen por `expense_date`. Ganancia realizada usa pedidos Entregados por `delivered_at`; estimada de pedidos activos separada. Tratamiento de ventas luego canceladas y reaperturas pendiente.
 
 ### order_payment_summary
 
@@ -554,34 +632,32 @@ Por pedido:
 - margen;
 - ganancia/hora.
 
-## 9. Decisiones que Codex no debe inventar
+Mano de obra usa tarifa histórica por sesión y materiales costo histórico por consumo. Nunca sumar dos veces compra y consumo, ni envío y gasto equivalente. El modelo de imputación debe cerrarse antes de implementar esta vista.
 
-Antes de fijar la implementación final, pedir confirmación si se requiere decidir:
+### order_item_profitability
 
-- permisos exactos del rol Colaborador;
-- si `income` será una tabla independiente o una vista/derivación de pagos + otros ingresos;
-- si un pedido puede tener más de un envío;
-- si una sesión de trabajo puede ser editada por cualquier usuario o solo admin;
-- política exacta de retención/eliminación de archivos;
-- formato definitivo del consecutivo de pedido;
-- políticas de respaldo según el plan de Supabase contratado.
+Costos y horas atribuibles mediante `order_item_id`, conservando `order_id`. No repartir automáticamente costos sin línea ni descuento general entre productos sin regla aprobada; señalar cobertura incompleta cuando corresponda. Reporte restringido a Administrador.
+
+## 9. Decisiones aprobadas y pendientes
+
+Las 16 decisiones de DECISIONS.md ya están aprobadas; no volver a tratarlas como preguntas abiertas. Su sección de pendientes delimita valoración de inventario, costos comunes, redondeo/cambios históricos, numeración retroactiva, alta de usuarios, retención y respaldos. Esos puntos se resuelven antes de implementar el comportamiento afectado. Reembolsos fuera de V1.
 
 ## 10. Orden recomendado de migraciones
 
-1. perfiles/roles;
-2. clientes;
-3. productos/categorías;
-4. materiales;
-5. pedidos;
-6. detalle de pedido;
-7. pagos/ingresos;
-8. gastos/categorías;
-9. movimientos de inventario;
-10. sesiones/pausas;
-11. envíos;
-12. archivos;
-13. configuración;
-14. auditoría;
-15. vistas/funciones;
-16. RLS/policies;
-17. seed inicial.
+Este orden es planificación; no crear migraciones en la etapa documental actual.
+
+1. perfiles/roles y configuración;
+2. infraestructura de auditoría antes de operaciones trazables;
+3. clientes, categorías y materiales;
+4. productos y product_materials;
+5. pedidos, consecutivo atómico y detalle;
+6. pagos e ingresos manuales;
+7. categorías de gastos y gastos;
+8. movimientos de inventario;
+9. sesiones y pausas;
+10. envíos;
+11. metadatos y políticas de archivos;
+12. vistas/funciones de reportes y costeo;
+13. seed inicial autorizado.
+
+Cada tabla se incorpora junto con sus constraints, índices, privilegios y RLS; cada operación, con autorización y auditoría cuando corresponda. No posponer toda la seguridad hasta la última migración. FKs históricas deben impedir borrados destructivos.

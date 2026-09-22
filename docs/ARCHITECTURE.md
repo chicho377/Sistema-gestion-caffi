@@ -5,6 +5,8 @@
 > Este documento traduce los requerimientos aprobados a una estructura técnica para Codex.  
 > Las decisiones de Next.js, TypeScript y Tailwind CSS forman parte del paquete de implementación acordado; Supabase y Vercel provienen directamente de los requerimientos funcionales.
 
+Las decisiones aprobadas de V1 se registran en [DECISIONS.md](DECISIONS.md). Esta actualización es documental: no incluye código, dependencias ni migraciones.
+
 ## 1. Objetivos arquitectónicos
 
 La solución debe priorizar:
@@ -83,7 +85,8 @@ Regla: la UI no debe contener lógica de negocio crítica duplicada que también
 │   ├── REQUIREMENTS.md
 │   ├── DESIGN_SYSTEM.md
 │   ├── ARCHITECTURE.md
-│   └── DATABASE.md
+│   ├── DATABASE.md
+│   └── DECISIONS.md
 ├── reference/
 ├── src/
 │   ├── app/
@@ -148,10 +151,12 @@ Login
 ### Reglas
 
 - Rutas internas protegidas.
-- Usuario inactivo no accede.
+- Usuario inactivo no accede ni opera incluso con una sesión previa; verificar el estado vigente en las capas de autorización.
 - Sesión expirada redirige a login.
 - `service_role` solo servidor si alguna operación privilegiada la requiere.
 - Credenciales SMTP nunca llegan al cliente.
+
+Administrador tiene acceso completo sujeto a integridad e historial. Colaborador opera clientes, productos, pedidos, cronómetro, inventario y envíos; registra pagos/gastos y consulta saldo operativo. No administra usuarios, modifica configuración financiera, anula movimientos financieros, modifica sesiones históricas ni consulta auditoría, costos, márgenes o reportes financieros globales. Alta/invitación y provisión del primer Administrador pendientes; no asumir registro público.
 
 ## 6. Separación de datos de negocio
 
@@ -160,11 +165,15 @@ No mezclar estas responsabilidades:
 ### Pedido
 Representa la venta/encargo y su estado.
 
+Proyecto es sinónimo de pedido en V1; no crear `projects`. Descuentos de líneas antes del descuento general; adelanto sobre total final, conservando monto originalmente solicitado. Sin sobrepagos. Cancelar exige motivo y conserva pagos válidos; reembolsos fuera de V1. Consecutivo `PED-AAAA-00001`, anual, estable y generado atómicamente en servidor/base de datos.
+
 ### Pago
 Representa dinero aplicado a un pedido.
 
+`payments` es la única fuente de ingresos de pedidos; cada pago válido cuenta una vez, incluso si el pedido se cancela. Operaciones concurrentes deben proteger saldo y total.
+
 ### Ingreso
-Representa dinero efectivamente recibido y su clasificación.
+Representa dinero efectivamente recibido y su clasificación. `manual_income` contiene solo ingresos ajenos a pedidos. El reporte combina pagos válidos e ingresos manuales válidos mediante consulta/vista autorizada. No existe una segunda fila de ingreso por pago.
 
 ### Gasto
 Representa egreso.
@@ -172,8 +181,12 @@ Representa egreso.
 ### Costeo
 Calcula costo real del proyecto.
 
+Usa costo unitario histórico del consumo y tarifa histórica de la sesión. Sesiones, consumos y costos atribuibles admiten `order_item_id` opcional además de `order_id`, validando pertenencia. No asumir distribución de costos comunes ni duplicar compras/consumos o envío/gasto. Método de valoración e imputación pendientes antes de cerrar costeo.
+
 ### Inventario
 Representa materiales y movimientos.
+
+Cantidades decimales, devoluciones explícitas al stock y ajustes con motivo/auditoría. Comprobar y registrar salidas de forma atómica para impedir stock negativo en operación normal.
 
 ### Sesión de trabajo
 Representa tiempo real trabajado.
@@ -219,9 +232,11 @@ Restricción:
 
 - una sola sesión activa/pausada por usuario a la vez.
 
+Garantizar unicidad en base de datos y transacciones de estado/pausas. Conservar tarifa aplicada al iniciar; no recalcular sesiones con configuración actual. Correcciones históricas solo por Administrador, con motivo y auditoría. El contador operativo no expone tarifa/costo al Colaborador.
+
 ## 8. Alertas de entrega
 
-La fecha solicitada se interpreta como fecha calendario.
+La fecha solicitada se interpreta como fecha calendario en `America/Costa_Rica`; semana desde lunes.
 
 Estados visuales:
 
@@ -242,6 +257,10 @@ El cálculo debe reutilizarse en:
 
 Evitar tres implementaciones independientes con reglas distintas.
 
+Reconocimiento: ingresos por fecha efectiva del pago/recepción manual; gastos por fecha del gasto; ventas al confirmar la cotización (`confirmed_at`). Ganancia realizada por período solo de pedidos Entregados, usando `delivered_at`; ganancia estimada de pedidos activos separada. No mezclar flujo de efectivo con rentabilidad.
+
+En V1 hay máximo un envío/entrega por pedido. Marcar envío Entregado no cambia silenciosamente el pedido; puede ofrecerse una acción explícita adicional.
+
 ## 9. Seguridad
 
 ### Cliente
@@ -252,10 +271,14 @@ Evitar tres implementaciones independientes con reglas distintas.
 
 ### Supabase
 
-- RLS activa.
+- RLS en todas las tablas empresariales desde su creación; privilegios mínimos por operación.
 - Políticas explícitas.
 - Restricciones/constraints donde corresponda.
 - Índices para relaciones y filtros frecuentes.
+
+Las vistas de reportes respetan políticas y roles. Propuestas técnicas: vistas con `security_invoker` cuando corresponda, proyecciones operativas y separación/restricción de columnas financieras. RLS por filas no basta para ocultar tarifas/costos dentro de registros operativos. No enviar datos prohibidos al navegador para simplemente ocultarlos. Registrar un gasto permite ingresar su monto, sin conceder consulta general de costos. Revisar también respuestas de escritura y exportaciones. El rol/estado del perfil no es editable para elevar privilegios.
+
+Auditoría desde la primera operación trazable, preferentemente transaccional; historial protegido contra edición ordinaria. Su interfaz completa puede implementarse después.
 
 ### Vercel
 
@@ -263,7 +286,7 @@ Variables de entorno separadas por ambiente.
 
 ### Archivos
 
-Usar Supabase Storage con acceso acorde a sensibilidad del archivo.
+Supabase Storage privado por defecto. Fotografías, referencias y comprobantes se acceden mediante mecanismos autorizados y políticas sobre objetos/metadatos. Comprobantes nunca públicos. Retención y recuperación se definen antes de producción.
 
 ## 10. Manejo de errores
 
@@ -292,71 +315,39 @@ Los componentes de dominio deben soportar render adaptativo sin duplicar lógica
 
 ## 12. Fases de implementación
 
-### Fase 0 — Base
+### Fase 0 — Decisiones y documentación
 
-- Next.js + TypeScript.
-- Tailwind.
-- Design tokens.
-- Layout responsive.
-- Supabase client/server.
-- Configuración de ambientes.
+Registrar decisiones aprobadas, matriz de permisos, fórmulas y trazabilidad requisito → interfaz → datos → prueba. Resolver pendientes antes de implementar su módulo; no fijar reglas funcionales por inferencia.
 
-### Fase 1 — Seguridad
+### Fase 1 — Base y seguridad
 
-- Auth.
-- Login.
-- Logout.
-- Recuperación.
-- Reset de contraseña.
-- Rutas protegidas.
-- perfiles/roles.
-- RLS base.
+Next.js, TypeScript, Tailwind, tokens, layout responsive, acceso Supabase cliente/servidor y ambientes. Auth, login/logout, recuperación/reset, perfiles y roles, rutas protegidas, RLS y permisos. Infraestructura de auditoría antes de primeras operaciones trazables.
 
-### Fase 2 — Catálogos
+### Fase 2 — Configuración y catálogos
 
-- Clientes.
-- Productos.
-- Configuración.
+Configuración, clientes, categorías, materiales, productos y product_materials. Imágenes privadas. Materiales antes de sus relaciones con productos; productos usan is_active sin status duplicado.
 
-### Fase 3 — Operación principal
+### Fase 3 — Pedidos y finanzas
 
-- Pedidos.
-- Estados productivos/financieros.
-- Pagos.
-- Ingresos.
-- Gastos.
+Pedidos, líneas, descuentos, adelanto histórico, consecutivo, alertas, estados y marcas de confirmación/entrega. Pagos, ingresos manuales, gastos y anulaciones autorizadas. Validación concurrente de saldo y auditoría.
 
-### Fase 4 — Tiempo y costeo
+### Fase 4 — Producción y entregas
 
-- Cronómetro.
-- Pausas.
-- Historial.
-- Costeo.
-- Rentabilidad.
+Cronómetro, pausas, historial, tarifa aplicada y correcciones autorizadas. Movimientos, costos históricos de consumo, stock bajo y envíos. Vínculos opcionales a líneas cuando corresponda.
 
-### Fase 5 — Inventario y entregas
+### Fase 5 — Costeo y rentabilidad
 
-- Materiales.
-- Movimientos.
-- Stock bajo.
-- Envíos.
+Integrar fuentes completas sin duplicaciones, usando valores históricos. Comparar tiempos estimados/reales y calcular rentabilidad por pedido/producto según imputación aprobada. No cerrar esta fase con valoración o costos comunes sin definir.
 
-### Fase 6 — Dashboard/reportes
+### Fase 6 — Dashboard y reportes
 
-- KPIs.
-- Gráficos.
-- filtros.
-- reportes.
-- exportación.
+KPIs, gráficos, filtros, consultas y exportación de reportes principales tanto a Excel como a PDF. Dashboard adaptado al rol: Colaborador recibe información operativa permitida, sin métricas financieras globales/costos/márgenes. Completar interfaz de auditoría solo para Administrador.
 
-### Fase 7 — Auditoría y pulido
+### Fase 7 — Validación y producción
 
-- Auditoría completa.
-- accesibilidad.
-- responsive QA.
-- rendimiento.
-- estados vacíos/loading/error.
-- revisión visual.
+Pruebas integrales, accesibilidad, responsive, rendimiento, revisión visual y configuración Vercel. Documentar y comprobar respaldo/recuperación antes de producción.
+
+Todas las fases verifican carga, vacío, éxito, error, permisos y tamaños de celular/tablet/escritorio. Seguridad, auditoría y responsive no se posponen al final. El plan conserva todo el alcance funcional aprobado.
 
 ## 13. Definition of Done técnica
 

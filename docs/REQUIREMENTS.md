@@ -2,6 +2,8 @@
 
 # Mini Sistema para Emprendimiento de Crochet
 
+Las decisiones aprobadas para V1 y su trazabilidad se encuentran en [DECISIONS.md](DECISIONS.md). Los puntos allí marcados como pendientes no constituyen reglas funcionales aprobadas.
+
 ## 1. Objetivo
 
 Desarrollar una aplicación web de gestión para un emprendimiento de crochet que permita administrar:
@@ -119,8 +121,14 @@ Administrar nombre, correo, estado, rol, fecha de creación y, cuando sea posibl
 **RF-USR-02 — Estado**  
 Activo / Inactivo. Usuario inactivo no puede ingresar.
 
+La inactivación impide acceso y operación incluso si el usuario tenía una sesión anterior.
+
 **RF-USR-03 — Roles**  
 Como mínimo: Administrador y Colaborador.
+
+**RF-USR-04 — Permisos V1**
+
+Administrador tiene acceso completo conforme a las reglas de integridad e historial. Colaborador trabaja con clientes, productos, pedidos, cronómetro, inventario y envíos; registra pagos y gastos; consulta saldo pendiente necesario para operar pedidos. No administra usuarios, modifica configuración financiera, realiza anulaciones financieras, modifica sesiones históricas ni consulta auditoría, costos, márgenes o reportes financieros globales. Registrar gastos requiere ingresar su monto, sin habilitar consulta financiera general. Aplicar restricciones en datos y servicios, además de UI.
 
 ### 5.2 Clientes
 
@@ -147,6 +155,8 @@ Crear, editar, consultar y desactivar productos.
 **RF-PRO-02 — Información**  
 Código/SKU único, nombre, categoría, descripción, precio base, tiempo estimado y estado.
 
+En V1 el estado es activo/inactivo mediante `is_active`; no mantener un segundo estado redundante.
+
 **RF-PRO-03 — Personalización**  
 Indicar si el producto puede personalizarse y registrar observaciones.
 
@@ -164,6 +174,8 @@ Permitir duplicar un producto para crear variantes.
 **RF-PED-01 — Creación**  
 Crear pedidos asociados a un cliente con número único, por ejemplo `PED-2026-00001`.
 
+Formato inicial aprobado `PED-AAAA-00001`, reinicio anual y generación atómica en servidor/base de datos, sin duplicados concurrentes. Identificador asignado estable. Proyecto y pedido son sinónimos en V1; no existe entidad de proyectos independiente.
+
 **RF-PED-02 — Detalle**  
 Registrar:
 
@@ -175,6 +187,8 @@ Registrar:
 - precio unitario;
 - descuentos;
 - precio total.
+
+Permitir descuento por línea y descuento general. Suma de cantidad × precio unitario menos descuentos de líneas = subtotal; subtotal menos descuento general = total final. Aplicar cada descuento una sola vez.
 
 **RF-PED-03 — Días restantes**  
 Calcular automáticamente días calendario restantes a la fecha solicitada.
@@ -200,11 +214,15 @@ No depender solo del color. Incluir texto y/o icono. Ocultar alerta al Entregar 
 **RF-PED-08 — Adelanto**  
 Registrar porcentaje y monto de adelanto solicitado/recibido. Valor habitual configurable: 50 %.
 
+Porcentaje calculado sobre total final. Conservar monto originalmente solicitado (`deposit_required_amount` o equivalente), sin recalcularlo silenciosamente con cambios posteriores.
+
 **RF-PED-09 — Saldo**  
 Saldo = total del pedido - pagos válidos recibidos.
 
 **RF-PED-10 — Pagos posteriores**  
 Permitir múltiples pagos hasta completar el total.
+
+No permitir sobrepagos en V1, tampoco por operaciones concurrentes o reducción del total por debajo de pagos válidos.
 
 **RF-PED-11 — Notas y referencias**  
 Notas, instrucciones especiales y fotografías.
@@ -231,6 +249,8 @@ Estados independientes:
 **RF-PED-15 — Cancelación**  
 Permitir cancelar conservando historial y motivo.
 
+Motivo obligatorio; se permite cancelar con pagos. Cancelar no anula pagos válidos ni elimina su ingreso. Reembolsos fuera de V1, reservados como funcionalidad futura.
+
 ### 5.5 Pagos e ingresos
 
 **RF-PAG-01 — Registro de pago**  
@@ -245,8 +265,10 @@ Un pedido puede recibir varios pagos.
 **RF-PAG-04 — Anulación**  
 Un pago incorrecto se anula con motivo y trazabilidad; no se elimina definitivamente.
 
+Anulación financiera exclusiva de Administrador.
+
 **RF-ING-01 — Ingresos**  
-Registrar ingresos manuales y automáticos cuando se reciba dinero. Diferenciar ingreso de venta no cobrada.
+Reconocer ingresos de pedidos automáticamente desde pagos válidos, sin crear una segunda fila de ingreso por pago. `payments` es su fuente oficial. Registrar ingresos ajenos a pedidos en `manual_income` o equivalente. El reporte combina ambas fuentes válidas mediante consulta/vista autorizada sin doble contabilización. Diferenciar ingreso de venta no cobrada.
 
 **RF-ING-02 — Clasificación**  
 Adelanto, pago final, venta de producto, tarjetas, stickers u otros.
@@ -271,6 +293,8 @@ Proveedor opcional y comprobante opcional.
 **RF-GAS-05 — Anulación**  
 Gastos históricos se anulan, no se destruyen.
 
+Anulación exclusiva de Administrador, con motivo y trazabilidad.
+
 ### 5.7 Inventario
 
 **RF-INV-01 — Existencias**  
@@ -279,14 +303,20 @@ Controlar hilo, lana, relleno, ojos de seguridad, accesorios, cajas, bolsas, sti
 **RF-INV-02 — Material**  
 Código, nombre, categoría, unidad, cantidad disponible, costo unitario y nivel mínimo.
 
+Cantidades decimales para gramos, metros y otras unidades aplicables. Costos de consulta restringida a Administrador; Colaborador conserva capacidad operativa sin acceso a costeo.
+
 **RF-INV-03 — Movimientos**  
 Entradas, consumos, ajustes positivos, ajustes negativos y devoluciones.
+
+Devolución al inventario registrada explícitamente como entrada de stock. Ajustes manuales requieren motivo y auditoría. Consumos conservan costo unitario aplicado históricamente; cambios de costo actual no recalculan consumos previos.
 
 **RF-INV-04 — Trazabilidad**  
 Fecha, cantidad, costo cuando corresponda, motivo, pedido y usuario.
 
 **RF-INV-05 — Actualización automática**  
 El stock se calcula a partir de movimientos. No modificar existencias sin movimiento.
+
+No permitir stock negativo en operación normal, incluso ante movimientos concurrentes.
 
 **RF-INV-06 — Stock bajo**  
 Mostrar alerta cuando se llegue o baje del mínimo.
@@ -295,6 +325,8 @@ Mostrar alerta cuando se llegue o baje del mínimo.
 
 **RF-ENV-01 — Tipo**  
 Retiro, envío o entrega personal.
+
+En V1 existe máximo un registro de envío/entrega por pedido.
 
 **RF-ENV-02 — Mensajería**  
 Registrar empresa o servicio cuando corresponda.
@@ -307,6 +339,8 @@ Dirección, fecha, número de guía, observaciones.
 
 **RF-ENV-05 — Estados**  
 Pendiente, Preparando, Enviado, Entregado.
+
+Entregar el envío no cambia silenciosamente el pedido. Puede ofrecerse una acción explícita adicional para marcar el pedido Entregado.
 
 ### 5.9 Control de horas
 
@@ -340,11 +374,15 @@ Fecha, hora inicio, hora final, pausas, duración neta, actividad y usuario.
 **RF-HOR-10 — Ajuste manual**  
 Permitir corrección con motivo y registro en auditoría.
 
+Solo Administrador modifica sesiones históricas.
+
 **RF-HOR-11 — Actividad opcional**  
 Ejemplos: tejido, ensamblaje, acabados, empaque.
 
 **RF-HOR-12 — Costeo**  
 Tiempo efectivo alimenta costo de mano de obra según valor/hora configurado.
+
+Cada sesión conserva la tarifa por hora aplicada al iniciarse. No recalcular historia con la tarifa actual. Colaborador puede operar el cronómetro sin consultar esa tarifa ni costos derivados.
 
 ### 5.10 Costeo y rentabilidad
 
@@ -356,6 +394,10 @@ Tiempo efectivo alimenta costo de mano de obra según valor/hora configurado.
 **RF-COS-06** `Margen (%) = Ganancia / Precio de venta × 100`.  
 **RF-COS-07** Ganancia por hora cuando existan datos.  
 **RF-COS-08** Comparar tiempo estimado vs. tiempo real.
+
+**RF-COS-09 — Historia e imputación**
+
+Nunca recalcular costos históricos con parámetros actuales. Sesiones, consumos y costos atribuibles pueden relacionarse opcionalmente con una línea (`order_item_id`) además del pedido; validar que pertenezca al mismo pedido. No duplicar costos representados en más de una fuente. La distribución de costos comunes requiere regla aprobada; no inventar prorrateos.
 
 ### 5.11 Dashboard
 
@@ -381,6 +423,14 @@ Debe respetar alertas amarillas/rojas de Pedidos.
 **RF-DAS-04** Gráficos: ingresos vs. gastos, gastos por categoría, ventas por producto, evolución mensual.  
 **RF-DAS-05** Filtros: Hoy, Semana, Mes, Año, rango personalizado.
 
+**RF-DAS-06 — Acceso por rol**
+
+Indicadores financieros globales, costos y márgenes solo para Administrador. Colaborador visualiza información operativa autorizada, incluido saldo por pedido; no recibe datos financieros restringidos en respuestas de la aplicación.
+
+**RF-DAS-07 — Calendario y reconocimiento**
+
+Zona horaria `America/Costa_Rica`, semana desde lunes. Ingresos por fecha efectiva del pago o recepción manual; gastos por fecha del gasto. Venta confirmada al pasar de Cotización a Confirmado. Ganancia realizada por período usa pedidos Entregados; ganancia estimada de activos se muestra separadamente. Conservar fecha/hora de confirmación y entrega para estos cálculos.
+
 ### 5.12 Configuración
 
 **RF-CON-01** Nombre del negocio, logo, teléfono, correo, moneda.  
@@ -399,13 +449,15 @@ Debe respetar alertas amarillas/rojas de Pedidos.
 - Horas por período/pedido/producto.
 - Rentabilidad por producto/proyecto.
 - Inventario y stock bajo.
-- Exportación prioritaria a Excel y/o PDF.
+- Los reportes principales de V1 deben exportarse tanto a Excel como a PDF, respetando permisos de consulta.
 
 ### 5.14 Auditoría
 
 **RF-AUD-01** Registrar acciones relevantes.  
 **RF-AUD-02** Como mínimo: creación/modificación de pedidos, pagos, anulaciones, gastos, ajustes de inventario, cambios de configuración.  
 **RF-AUD-03** Guardar usuario, fecha/hora, acción y registro afectado.
+
+**RF-AUD-04** Infraestructura disponible desde la primera operación trazable, aunque la interfaz se implemente después. Historial no editable por usuarios ordinarios. Colaborador no consulta auditoría.
 
 ## 6. Reglas de negocio
 
@@ -440,7 +492,7 @@ Ganancia por hora aproximada: ₡1.230,77
 
 ## 8. Seguridad
 
-- RLS en tablas sensibles.
+- RLS en todas las tablas empresariales; vistas de reportes respetan también las políticas de acceso.
 - Usuario anónimo no consulta, modifica ni elimina datos empresariales.
 - `service_role` nunca en frontend.
 - Secretos en variables de entorno.
@@ -448,6 +500,8 @@ Ganancia por hora aproximada: ₡1.230,77
 - Credenciales SMTP nunca en frontend/repositorio público.
 - Validación de formularios.
 - Producción mediante HTTPS.
+- Storage privado por defecto; fotografías, referencias y comprobantes accedidos por mecanismos autorizados. Comprobantes nunca públicos.
+- Bloquear usuarios inactivos aunque conserven una sesión anterior; no confiar exclusivamente en ocultar pantallas o en roles desactualizados.
 
 ## 9. Requerimientos no funcionales
 
@@ -459,7 +513,8 @@ Ganancia por hora aproximada: ₡1.230,77
 **RNF-006** Acceso por Internet sujeto a disponibilidad de servicios.  
 **RNF-007** Rendimiento fluido para volumen de emprendimiento pequeño.  
 **RNF-008** Documentar respaldo/recuperación antes de producción.  
-**RNF-009** Exportación prioritaria Excel/PDF.  
+**RNF-009** Exportación de reportes principales V1 tanto a Excel como a PDF, con autorización.
+
 **RNF-010** Parámetros frecuentes configurables, no hardcodeados.  
 **RNF-011** Mobile-first.  
 **RNF-012** Reflujo desde aproximadamente 320 px.  
