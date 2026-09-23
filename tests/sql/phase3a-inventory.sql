@@ -1,0 +1,13 @@
+select jsonb_build_object(
+ 'tables',(select jsonb_agg(jsonb_build_object('name',c.relname,'rls',c.relrowsecurity,'grants',c.relacl)) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname in ('orders','order_items','order_files')),
+ 'views',(select jsonb_agg(jsonb_build_object('name',c.relname,'options',c.reloptions,'grants',c.relacl)) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname in ('quotes_read','quote_items_read','quote_products_read')),
+ 'functions',(select jsonb_agg(jsonb_build_object('name',n.nspname||'.'||p.proname,'args',pg_get_function_identity_arguments(p.oid),'definer',p.prosecdef,'config',p.proconfig,'acl',p.proacl)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','private') and p.proname in ('quote_input_money','save_quote','cancel_quote','register_order_file')),
+ 'triggers',(select jsonb_agg(jsonb_build_object('table',c.relname,'name',t.tgname,'definition',pg_get_triggerdef(t.oid))) from pg_trigger t join pg_class c on c.oid=t.tgrelid where c.oid in ('public.orders'::regclass,'public.order_items'::regclass,'public.order_files'::regclass) and not t.tgisinternal),
+ 'policies',(select jsonb_agg(to_jsonb(p)) from pg_policies p where (schemaname='public' and tablename in ('orders','order_items','order_files')) or policyname='order_references_read'),
+ 'indexes',(select jsonb_agg(to_jsonb(i)) from pg_indexes i where schemaname='public' and tablename in ('orders','order_items','order_files')),
+ 'constraints',(select jsonb_agg(jsonb_build_object('object',coalesce(nullif(conrelid,0)::regclass::text,'quote_money'),'name',conname,'type',contype,'definition',pg_get_constraintdef(oid))) from pg_constraint where (conrelid in ('public.orders'::regclass,'public.order_items'::regclass,'public.order_files'::regclass) or contypid='public.quote_money'::regtype) and contype<>'n'),
+ 'not_null',(select jsonb_agg(table_name||'.'||column_name order by table_name,ordinal_position) from information_schema.columns where table_schema='public' and table_name in ('orders','order_items','order_files') and is_nullable='NO'),
+ 'bucket',(select to_jsonb(b) from (select id,public,file_size_limit,allowed_mime_types from storage.buckets where id='order-references') b),
+ 'public_tables',(select jsonb_agg(tablename order by tablename) from pg_tables where schemaname='public'),
+ 'migrations',(select jsonb_agg(version order by version) from supabase_migrations.schema_migrations)
+) as inventory;

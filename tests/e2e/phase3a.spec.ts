@@ -20,6 +20,7 @@ for (const width of [320,375,768,1024,1440]) {
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.getByLabel("Precio línea 1",{exact:true}).fill("0.125");
   await expect(page.getByRole("button",{name:"Guardar cotización"})).toBeDisabled();
+  await expect(page.getByRole("alert").filter({hasText:"dos decimales"})).toBeVisible();
   await page.getByLabel("Precio línea 1",{exact:true}).fill("12.50");
   await page.getByRole("button",{name:"Desactivar línea 1"}).click();
   await expect(page.getByText("₡0,00",{exact:true}).first()).toBeVisible();

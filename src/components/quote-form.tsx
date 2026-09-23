@@ -82,7 +82,7 @@ export function QuoteForm({ order, initialLines, clients, products, admin, today
     </section>
     <section className="panel quote-summary">
       <label>Descuento general CRC<input inputMode="decimal" required disabled={!editable || pending} value={discount} onChange={(e) => setDiscount(e.target.value.replace(",", "."))} /></label>
-      {preview ? <dl><dt>Subtotal</dt><dd>{money(preview.subtotal)}</dd><dt>Total cotizado</dt><dd><strong>{money(preview.total)}</strong></dd></dl> : <p className="message">{previewError}</p>}
+      {preview ? <dl><dt>Subtotal</dt><dd>{money(preview.subtotal)}</dd><dt>Total cotizado</dt><dd><strong>{money(preview.total)}</strong></dd></dl> : <p role="alert" className="message error">{previewError}</p>}
       <p className="muted">Importes en colones. La confirmación y los pagos aún no están disponibles.</p>
       {error && <p role="alert" className="message error">{error}</p>}
       {editable && <button className="button primary" disabled={pending || !preview}><Save size={18}/>{pending ? "Guardando…" : "Guardar cotización"}</button>}

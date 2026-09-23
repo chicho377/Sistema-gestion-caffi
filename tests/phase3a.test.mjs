@@ -45,9 +45,23 @@ test("3A: PostgreSQL local real, atomicidad, snapshots, permisos y terminalidad"
  alter table storage.objects enable row level security;grant usage on schema storage to authenticated,anon;grant select,insert,update,delete on storage.objects to authenticated;`);
  for(const file of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort()) await db.exec(await readFile('supabase/migrations/'+file,'utf8'));
  await db.exec(await readFile('tests/sql/phase3a-verification.sql','utf8'));
+ await db.exec(await readFile('tests/sql/phase3a-audit.sql','utf8'));
  const schema=await db.query(await readFile("tests/sql/phase3a-schema.sql","utf8"));
  await mkdir("test-results",{recursive:true});await writeFile("test-results/phase3a-local-schema.json",JSON.stringify(schema.rows[0].fingerprint,null,2));
  const records=await db.query("select count(*)::int as n from public.orders");
  assert.equal(records.rows[0].n,0,"Pruebas revierten únicamente su propia transacción");
  } finally { await db.close(); }
+});
+
+test("3A: segunda migración modifica solo SQLSTATE de conflictos",async()=>{
+ const first=await readFile('supabase/migrations/20260923055811_phase3a_quotes.sql','utf8');
+ const second=await readFile('supabase/migrations/20260923110205_phase3a_conflict_response.sql','utf8');
+ const definitions=second.match(/create or replace function[\s\S]*?end \$\$;/gi);
+ assert.equal(definitions.length,2);
+ for(const name of ['save_quote','cancel_quote']){
+  const original=first.match(new RegExp('create function private\\.'+name+'\\([\\s\\S]*?end \\$\\$;'))[0];
+  const modified=definitions.find(d=>d.includes('private.'+name+'('));
+  assert.equal(modified.replace('create or replace function','create function').replaceAll("errcode='PT409'","errcode='40001'"),original);
+ }
+ assert.equal(second.replace(/--[^\n]*/g,'').replace(/create or replace function[\s\S]*?end \$\$;/gi,'').replace(/begin;|commit;|\s/g,''),'');
 });
