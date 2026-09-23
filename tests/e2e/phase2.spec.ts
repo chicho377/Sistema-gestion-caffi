@@ -1,4 +1,26 @@
 import { test, expect } from "@playwright/test";
+test("Catálogos: carga visible, error de servidor y recuperación", async ({ page, request }) => {
+  await request.post("http://127.0.0.1:54329/test/reset");
+  await page.goto("/login");
+  await page.getByLabel("Correo electrónico").fill("member@example.test");
+  await page.getByLabel("Contraseña", { exact: true }).fill("Test-password-123!");
+  await page.getByRole("button", { name: "Entrar a mi espacio" }).click();
+  await expect(page).toHaveURL(/dashboard/);
+  try {
+    await request.post("http://127.0.0.1:54329/test/catalog-state", { data: { delay: 2500 } });
+    await page.goto("/clientes", { waitUntil: "commit" });
+    await expect(page.getByText("Cargando tu espacio…")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tu catálogo empieza aquí" })).toBeVisible();
+    await request.post("http://127.0.0.1:54329/test/catalog-state", { data: { fail: true } });
+    await page.goto("/categorias", { waitUntil: "commit" });
+    await expect(page.getByRole("heading", { name: "No pudimos cargar esta página" })).toBeVisible({ timeout: 20000 });
+    await request.post("http://127.0.0.1:54329/test/catalog-state", { data: {} });
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Tu catálogo empieza aquí" })).toBeVisible();
+  } finally {
+    await request.post("http://127.0.0.1:54329/test/catalog-state", { data: {} });
+  }
+});
 for (const width of [320, 375, 768, 1024, 1440]) {
   test("Catálogos vacíos y formularios " + width, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });

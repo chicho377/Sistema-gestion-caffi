@@ -444,6 +444,8 @@ Zona horaria `America/Costa_Rica`, semana desde lunes. Ingresos por fecha efecti
 
 **RF-CON-05 — Fase 2 / D-18** Configuración inicial de caffi crochet según DECISIONS.md. Solo Administrador modifica configuración general y financiera. Productos y futuros pedidos en CRC; costo de materiales en CRC/USD con equivalente CRC usando venta de referencia del BCCR. Persistir la última tasa obtenida para usarla si falla la fuente, mostrando fecha y procedencia. Costo pendiente cuando Colaborador registra material; solo Administrador completa/consulta costos. Fase 2 no registra gastos, pedidos ni movimientos de inventario.
 
+**RF-CON-06 — Tipo de cambio aprobado e historia** SIGCA puede consultar la tasa mediante el proveedor público V1 actualmente implementado, tipodecambio.paginasweb.cr (referencia BCCR), sin secretos adicionales. Conservar la última tasa válida ante fallos. Todo futuro dato histórico dependiente de una conversión conserva la tasa aplicada originalmente, importe y moneda originales; no se recalcula con tasas futuras ni al cambiar proveedor. En Fase 2 el equivalente CRC del costo actual es informativo; no se crean operaciones históricas de fases posteriores.
+
 ### 5.13 Reportes
 
 - Ventas por período.

@@ -40,6 +40,8 @@ const session = (key) => ({
   user: user(key),
 });
 let revoked = new Set();
+let catalogFailure = false;
+let catalogDelay = 0;
 const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
   res.setHeader(
@@ -65,6 +67,13 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/health") return reply(200, { ok: true });
   if (url.pathname === "/test/reset") {
     revoked = new Set();
+    catalogFailure = false;
+    catalogDelay = 0;
+    return reply(200, {});
+  }
+  if (url.pathname === "/test/catalog-state") {
+    catalogFailure = body.fail === true;
+    catalogDelay = Math.min(3000, Math.max(0, Number(body.delay) || 0));
     return reply(200, {});
   }
   if (url.pathname === "/test/revoke") {
@@ -166,6 +175,8 @@ const server = http.createServer(async (req, res) => {
         "material_costs",
       ].includes(table)
     ) {
+      if (catalogDelay) await new Promise((resolve) => setTimeout(resolve, catalogDelay));
+      if (catalogFailure) return reply(503, { message: "Simulated catalog outage" });
       res.setHeader("content-range", "0-0/0");
       return reply(200, []);
     }

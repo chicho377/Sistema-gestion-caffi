@@ -144,7 +144,7 @@ export default async function CatalogPage({
                 <th>Nombre</th>
                 <th>Detalle</th>
                 {catalog === "materiales" && actor.role === "admin" && (
-                  <th>Costo unitario</th>
+                  <th className="numeric">Costo unitario</th>
                 )}
                 <th>Estado</th>
                 <th>

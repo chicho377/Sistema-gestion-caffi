@@ -259,3 +259,11 @@ node tests/phase2-real.mjs
 La prueba real crea registros identificados con VERIFICACION-F2 y los desactiva al finalizar; conserva costos, archivos e historial. No crea usuarios ni cambia contraseñas; usa sesiones aisladas de las cuentas autorizadas. Inactiva temporalmente al Colaborador y restaura su estado. No ejecutar sobre cuentas en operación sin coordinar esa prueba.
 
 No se avanza a Fase 3. Los pendientes funcionales de fases futuras permanecen en `docs/DECISIONS.md`.
+
+Auditoría de completitud (22/09/2026): [matriz de 187 criterios e inventario efectivo](docs/PHASE2_VERIFICATION.md#matriz-requisito-por-requisito), respaldada por [metadatos reales del esquema](docs/PHASE2_SCHEMA_AUDIT.json). La migración adicional `20260923003133_phase2_audit_validation.sql` alinea el rechazo de espacios de control en correos entre servidor y BD; probada y aplicada únicamente en DEV tras dry-run. No elimina ni transforma datos.
+
+Resultado actualizado: lint/typecheck/build correctos, 12 pruebas locales, 14 E2E simulados y recorrido ampliado de UI/API/RLS/Storage contra Supabase real aprobados; npm audit de producción sin vulnerabilidades. Las pruebas simuladas de loading/error/fallback no se presentan como fallos reales de servicios alojados. Logo definitivo y valor/hora siguen pendientes como datos de configuración, con las funciones implementadas.
+
+El tipo de cambio es alcance aprobado. V1 conserva el proveedor público actual y la última tasa válida; no requiere secretos nuevos. Las futuras operaciones históricas guardarán la tasa aplicada, importe y moneda originales y no se recalcularán al cambiar tasas/proveedor; esas operaciones no se implementan en Fase 2.
+
+La auditoría añade también `20260923004701_phase2_phone_validation.sql`: rechaza teléfonos formados solo por signos, igual que la validación de servidor corregida. Probada localmente, dry-run exclusivo y verificación SQL/API/UI en DEV; sin transformar ni borrar datos. Las cinco migraciones locales/remotas coinciden (una Fase 1 y cuatro Fase 2).

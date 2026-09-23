@@ -85,6 +85,12 @@ Productos y futuros pedidos se expresan en CRC. Materiales admiten costo actual 
 
 El consecutivo mantiene D-11; en Fase 2 se muestra su formato aprobado, sin generar pedidos. Sin movimientos ni existencias reales, sin datos ficticios en históricos dependientes de pedidos.
 
+### Aclaración aprobada de D-18: tipo de cambio e historia
+
+La consulta de tipo de cambio pertenece al alcance aprobado de Fase 2; no es una desviación. En V1 se mantiene el proveedor público actualmente implementado, tipodecambio.paginasweb.cr, que publica la referencia BCCR. No requiere claves ni secretos adicionales. Si falla una consulta, se conserva la última tasa válida con su fecha y procedencia.
+
+Cualquier registro histórico que dependa de una conversión debe conservar la tasa aplicada originalmente, además del importe y moneda originales. Nunca se recalcula con tasas futuras. Un cambio de proveedor tampoco altera esos datos históricos. Esta obligación se aplicará al implementar las entidades históricas en su fase autorizada; el equivalente actual del catálogo es informativo, no un costo histórico ni un movimiento.
+
 ## Trazabilidad
 
 | Decisiones | Requisitos afectados | Modelo / arquitectura |

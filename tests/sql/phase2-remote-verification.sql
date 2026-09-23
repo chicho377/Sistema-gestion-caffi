@@ -13,6 +13,14 @@ insert into public.products(id,sku,name,category_id,base_price,estimated_minutes
 insert into public.product_materials(product_id,material_id,estimated_quantity) values('24000000-0000-4000-8000-000000000001','23000000-0000-4000-8000-000000000001',2.5);
 do $$
 begin
+ begin
+  insert into public.clients(name,email) values('Correo inválido',E'a\tb@example.test');
+  raise exception 'Whitespace email allowed';
+ exception when check_violation then null; end;
+ begin
+  insert into public.clients(name,phone) values('Teléfono inválido','--------');
+  raise exception 'Punctuation-only phone allowed';
+ exception when check_violation then null; end;
  if (select count(*) from public.material_costs)<>0 or (select count(*) from public.settings)<>0 or (select count(*) from public.audit_log)<>0 then raise exception 'Financial leak'; end if;
  if exists(select 1 from information_schema.columns where table_schema='public' and table_name='materials' and column_name in ('amount','currency','unit_cost','cost')) then raise exception 'Cost column exposed'; end if;
  begin
@@ -30,6 +38,14 @@ begin
  begin
   insert into public.product_categories(name) values(' prueba   sql fase2 ');
   raise exception 'Duplicate category allowed';
+ exception when unique_violation then null; end;
+ begin
+  insert into public.materials(code,name,category,unit) values('sql-p2 ','Duplicado','Hilos','g');
+  raise exception 'Duplicate material code allowed';
+ exception when unique_violation then null; end;
+ begin
+  insert into public.product_materials(product_id,material_id,estimated_quantity) values('24000000-0000-4000-8000-000000000001','23000000-0000-4000-8000-000000000001',1);
+  raise exception 'Duplicate product/material allowed';
  exception when unique_violation then null; end;
  begin
   insert into public.product_materials(product_id,material_id,estimated_quantity) values('24000000-0000-4000-8000-000000000001',gen_random_uuid(),1);
@@ -57,6 +73,16 @@ end; $$;
 select set_config('request.jwt.claim.sub','20000000-0000-4000-8000-000000000001',true);
 insert into public.material_costs(material_id,amount,currency) values('23000000-0000-4000-8000-000000000001',10.25,'USD');
 update public.settings set hourly_rate=2000;
+do $$begin
+ begin
+  update public.settings set email=E'a\nb@example.test';
+  raise exception 'Settings whitespace email allowed';
+ exception when check_violation then null; end;
+ begin
+  update public.settings set phone='--------';
+  raise exception 'Settings punctuation-only phone allowed';
+ exception when check_violation then null; end;
+end; $$;
 do $$begin
  if not exists(select 1 from public.material_costs where amount=10.25) then raise exception 'Admin cost denied'; end if;
  if not exists(select 1 from public.audit_log where entity_type='clients' and user_id='20000000-0000-4000-8000-000000000002') then raise exception 'Missing attributed audit'; end if;
@@ -87,4 +113,21 @@ do $$declare t text; begin
  end loop;
  if exists(select 1 from storage.buckets where id='catalog-images' and public) then raise exception 'Public bucket'; end if;
 end; $$;
+-- Logo: rama administrativa y proyección sin parámetros financieros; todo se revierte.
+select private.register_catalog_image('20000000-0000-4000-8000-000000000001',null,'branding/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.webp','',true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub','20000000-0000-4000-8000-000000000001',true);
+do $$begin
+ if public.business_brand()->>'logo_path' <> 'branding/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.webp' then raise exception 'Logo missing'; end if;
+ if public.business_brand() ? 'hourly_rate' or public.business_brand() ? 'deposit_percentage' then raise exception 'Brand financial leak'; end if;
+end; $$;
+select set_config('request.jwt.claim.sub','20000000-0000-4000-8000-000000000002',true);
+do $$declare t text; n bigint; begin
+ foreach t in array array['settings','clients','product_categories','materials','material_costs','products','product_materials','product_images','exchange_rates'] loop
+  execute format('select count(*) from public.%I',t) into n;
+  if n<>0 then raise exception 'Inactive rows in %',t; end if;
+ end loop;
+ if public.business_brand() is not null then raise exception 'Inactive branding leak'; end if;
+end; $$;
+reset role;
 rollback;

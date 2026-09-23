@@ -144,7 +144,7 @@ export function validateFields(fields: Field[], data: FormData): Row {
     } else {
       if (f.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))
         throw new Error("Correo electrónico inválido.");
-      if (f.name === "phone" && !/^\+?[0-9 ()-]{8,25}$/.test(v))
+      if (f.name === "phone" && (!/^\+?[0-9 ()-]{8,25}$/.test(v) || !/[0-9]/.test(v)))
         throw new Error("Teléfono inválido.");
       if (f.name.endsWith("_id") && !uuid.test(v))
         throw new Error("Selección inválida.");

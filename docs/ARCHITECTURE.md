@@ -333,6 +333,8 @@ Concreción D-18: configuración solo Administrador; productos en CRC; materiale
 
 Imágenes en catalog-images privado. Carga exclusiva de servidor, validación de bytes y recodificación WebP; metadatos vinculados por FK. Descarga mediante ruta autorizada con JWT y RLS en cada solicitud, sin caché compartida. Duplicar producto conserva referencias al archivo privado y copia las cantidades estimadas, sin registrar consumo. Desactivar preserva filas e historial. Los listados usan páginas de 25 registros, tarjetas móviles y tablas desde 1024 px. Los importes originales se conservan en numeric; el equivalente CRC es informativo y no fija reglas de redondeo de pedidos.
 
+Contrato aprobado de conversión (D-18 / RF-CON-06): el proveedor público V1 actual no requiere secretos adicionales. Cambiarlo en el futuro afecta únicamente nuevas consultas. Las futuras entidades históricas deben guardar una copia de la tasa aplicada junto al importe/moneda originales; sus lecturas no consultarán la tasa vigente para recalcular historia. exchange_rates es una caché persistente de referencias cambiarias, no la fuente mutable de cálculo histórico. Su uso y respaldo con la última tasa válida son alcance aprobado de Fase 2.
+
 ### Fase 3 — Pedidos y finanzas
 
 Pedidos, líneas, descuentos, adelanto histórico, consecutivo, alertas, estados y marcas de confirmación/entrega. Pagos, ingresos manuales, gastos y anulaciones autorizadas. Validación concurrente de saldo y auditoría.

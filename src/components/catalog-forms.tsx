@@ -3,7 +3,7 @@ import { useId, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import Swal from "sweetalert2";
-import { Save, Power, Copy, Upload, Star, RefreshCw } from "lucide-react";
+import { Save, Power, Copy, Upload, Star, RefreshCw, LoaderCircle } from "lucide-react";
 import {
   catalogs,
   costFields,
@@ -146,7 +146,7 @@ function Feedback({ error, pending }: { error: string; pending: boolean }) {
         </p>
       )}
       <button className="button primary" disabled={pending}>
-        <Save size={18} />
+        {pending ? <LoaderCircle size={18} className="spinner" aria-hidden="true" /> : <Save size={18} />}
         {pending ? "Guardando…" : "Guardar"}
       </button>
     </>

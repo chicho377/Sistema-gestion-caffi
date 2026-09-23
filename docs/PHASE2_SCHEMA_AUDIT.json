@@ -1,0 +1,1078 @@
+{
+  "views": [],
+  "tables": [
+    {
+      "rls": true,
+      "name": "clients",
+      "grants": [
+        {
+          "role": "anon",
+          "delete": false,
+          "insert": false,
+          "select": false,
+          "update": false
+        },
+        {
+          "role": "authenticated",
+          "delete": false,
+          "insert": true,
+          "select": true,
+          "update": true
+        },
+        {
+          "role": "service_role",
+          "delete": true,
+          "insert": true,
+          "select": true,
+          "update": true
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "address",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "location",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "required": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX clients_pkey ON public.clients USING btree (id)",
+        "CREATE INDEX clients_name_idx ON public.clients USING btree (lower(name))",
+        "CREATE INDEX clients_active_idx ON public.clients USING btree (is_active, name)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER catalog_audit AFTER INSERT OR UPDATE ON public.clients FOR EACH ROW EXECUTE FUNCTION private.audit_catalog()",
+        "CREATE TRIGGER catalog_stamp BEFORE UPDATE ON public.clients FOR EACH ROW EXECUTE FUNCTION private.catalog_stamp()"
+      ],
+      "constraints": [
+        {
+          "name": "clients_address_check",
+          "definition": "CHECK ((length(address) <= 1000))"
+        },
+        {
+          "name": "clients_email_check",
+          "definition": "CHECK (((email ~ '^[^ @]+@[^ @]+\\.[^ @]+$'::text) AND (length(email) <= 254)))"
+        },
+        {
+          "name": "clients_email_no_whitespace",
+          "definition": "CHECK ((email !~ '[[:space:]]'::text))"
+        },
+        {
+          "name": "clients_location_check",
+          "definition": "CHECK ((length(location) <= 300))"
+        },
+        {
+          "name": "clients_name_check",
+          "definition": "CHECK (((length(TRIM(BOTH FROM name)) >= 1) AND (length(TRIM(BOTH FROM name)) <= 120)))"
+        },
+        {
+          "name": "clients_notes_check",
+          "definition": "CHECK ((length(notes) <= 3000))"
+        },
+        {
+          "name": "clients_phone_check",
+          "definition": "CHECK ((phone ~ '^\\+?[0-9 ()-]{8,25}$'::text))"
+        },
+        {
+          "name": "clients_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "clients_phone_has_digit",
+          "definition": "CHECK ((phone ~ '[0-9]'::text))"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "name": "exchange_rates",
+      "grants": [
+        {
+          "role": "anon",
+          "delete": false,
+          "insert": false,
+          "select": false,
+          "update": false
+        },
+        {
+          "role": "authenticated",
+          "delete": false,
+          "insert": false,
+          "select": true,
+          "update": false
+        },
+        {
+          "role": "service_role",
+          "delete": true,
+          "insert": false,
+          "select": true,
+          "update": false
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "rate_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "sell_rate",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "fetched_at",
+          "type": "timestamp with time zone",
+          "required": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "required": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX exchange_rates_pkey ON public.exchange_rates USING btree (id)",
+        "CREATE UNIQUE INDEX exchange_rates_rate_date_key ON public.exchange_rates USING btree (rate_date)",
+        "CREATE INDEX exchange_rates_latest_idx ON public.exchange_rates USING btree (rate_date DESC)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER catalog_audit AFTER INSERT OR UPDATE ON public.exchange_rates FOR EACH ROW EXECUTE FUNCTION private.audit_catalog()",
+        "CREATE TRIGGER catalog_stamp BEFORE UPDATE ON public.exchange_rates FOR EACH ROW EXECUTE FUNCTION private.catalog_stamp()"
+      ],
+      "constraints": [
+        {
+          "name": "exchange_rates_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "exchange_rates_rate_date_key",
+          "definition": "UNIQUE (rate_date)"
+        },
+        {
+          "name": "exchange_rates_sell_rate_check",
+          "definition": "CHECK (((sell_rate > (0)::numeric) AND (sell_rate < 'Infinity'::numeric)))"
+        },
+        {
+          "name": "exchange_rates_source_check",
+          "definition": "CHECK ((source = 'BCCR via tipodecambio.paginasweb.cr'::text))"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "name": "material_costs",
+      "grants": [
+        {
+          "role": "anon",
+          "delete": false,
+          "insert": false,
+          "select": false,
+          "update": false
+        },
+        {
+          "role": "authenticated",
+          "delete": false,
+          "insert": true,
+          "select": true,
+          "update": true
+        },
+        {
+          "role": "service_role",
+          "delete": true,
+          "insert": true,
+          "select": true,
+          "update": true
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "material_id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "currency",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "required": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX material_costs_pkey ON public.material_costs USING btree (id)",
+        "CREATE UNIQUE INDEX material_costs_material_id_key ON public.material_costs USING btree (material_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER catalog_audit AFTER INSERT OR UPDATE ON public.material_costs FOR EACH ROW EXECUTE FUNCTION private.audit_catalog()",
+        "CREATE TRIGGER catalog_stamp BEFORE UPDATE ON public.material_costs FOR EACH ROW EXECUTE FUNCTION private.catalog_stamp()"
+      ],
+      "constraints": [
+        {
+          "name": "material_costs_amount_check",
+          "definition": "CHECK (((amount >= (0)::numeric) AND (amount < 'Infinity'::numeric)))"
+        },
+        {
+          "name": "material_costs_currency_check",
+          "definition": "CHECK ((currency = ANY (ARRAY['CRC'::text, 'USD'::text])))"
+        },
+        {
+          "name": "material_costs_material_id_fkey",
+          "definition": "FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "material_costs_material_id_key",
+          "definition": "UNIQUE (material_id)"
+        },
+        {
+          "name": "material_costs_pkey",
+          "definition": "PRIMARY KEY (id)"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "name": "materials",
+      "grants": [
+        {
+          "role": "anon",
+          "delete": false,
+          "insert": false,
+          "select": false,
+          "update": false
+        },
+        {
+          "role": "authenticated",
+          "delete": false,
+          "insert": true,
+          "select": true,
+          "update": true
+        },
+        {
+          "role": "service_role",
+          "delete": true,
+          "insert": true,
+          "select": true,
+          "update": true
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "unit",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "min_stock",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "required": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX materials_pkey ON public.materials USING btree (id)",
+        "CREATE UNIQUE INDEX materials_code_unique ON public.materials USING btree (lower(TRIM(BOTH FROM code)))",
+        "CREATE INDEX materials_active_name_idx ON public.materials USING btree (is_active, name)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER catalog_audit AFTER INSERT OR UPDATE ON public.materials FOR EACH ROW EXECUTE FUNCTION private.audit_catalog()",
+        "CREATE TRIGGER catalog_stamp BEFORE UPDATE ON public.materials FOR EACH ROW EXECUTE FUNCTION private.catalog_stamp()"
+      ],
+      "constraints": [
+        {
+          "name": "materials_category_check",
+          "definition": "CHECK (((length(TRIM(BOTH FROM category)) >= 1) AND (length(TRIM(BOTH FROM category)) <= 100)))"
+        },
+        {
+          "name": "materials_code_check",
+          "definition": "CHECK (((length(TRIM(BOTH FROM code)) >= 1) AND (length(TRIM(BOTH FROM code)) <= 60)))"
+        },
+        {
+          "name": "materials_min_stock_check",
+          "definition": "CHECK (((min_stock >= (0)::numeric) AND (min_stock < 'Infinity'::numeric)))"
+        },
+        {
+          "name": "materials_name_check",
+          "definition": "CHECK (((length(TRIM(BOTH FROM name)) >= 1) AND (length(TRIM(BOTH FROM name)) <= 120)))"
+        },
+        {
+          "name": "materials_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "materials_unit_check",
+          "definition": "CHECK (((length(TRIM(BOTH FROM unit)) >= 1) AND (length(TRIM(BOTH FROM unit)) <= 40)))"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "name": "product_categories",
+      "grants": [
+        {
+          "role": "anon",
+          "delete": false,
+          "insert": false,
+          "select": false,
+          "update": false
+        },
+        {
+          "role": "authenticated",
+          "delete": false,
+          "insert": true,
+          "select": true,
+          "update": true
+        },
+        {
+          "role": "service_role",
+          "delete": true,
+          "insert": true,
+          "select": true,
+          "update": true
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "required": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX product_categories_pkey ON public.product_categories USING btree (id)",
+        "CREATE UNIQUE INDEX product_categories_name_unique ON public.product_categories USING btree (lower(regexp_replace(TRIM(BOTH FROM name), '\\s+'::text, ' '::text, 'g'::text)))"
+      ],
+      "triggers": [
+        "CREATE TRIGGER catalog_audit AFTER INSERT OR UPDATE ON public.product_categories FOR EACH ROW EXECUTE FUNCTION private.audit_catalog()",
+        "CREATE TRIGGER catalog_stamp BEFORE UPDATE ON public.product_categories FOR EACH ROW EXECUTE FUNCTION private.catalog_stamp()"
+      ],
+      "constraints": [
+        {
+          "name": "product_categories_description_check",
+          "definition": "CHECK ((length(description) <= 1000))"
+        },
+        {
+          "name": "product_categories_name_check",
+          "definition": "CHECK (((length(TRIM(BOTH FROM name)) >= 1) AND (length(TRIM(BOTH FROM name)) <= 100)))"
+        },
+        {
+          "name": "product_categories_pkey",
+          "definition": "PRIMARY KEY (id)"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "name": "product_images",
+      "grants": [
+        {
+          "role": "anon",
+          "delete": false,
+          "insert": false,
+          "select": false,
+          "update": false
+        },
+        {
+          "role": "authenticated",
+          "delete": false,
+          "insert": false,
+          "select": true,
+          "update": false
+        },
+        {
+          "role": "service_role",
+          "delete": true,
+          "insert": true,
+          "select": true,
+          "update": true
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "product_id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "caption",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "is_main",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "required": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX product_images_pkey ON public.product_images USING btree (id)",
+        "CREATE INDEX product_images_product_idx ON public.product_images USING btree (product_id)",
+        "CREATE INDEX product_images_path_idx ON public.product_images USING btree (path)",
+        "CREATE UNIQUE INDEX product_images_main_unique ON public.product_images USING btree (product_id) WHERE (is_main AND is_active)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER catalog_audit AFTER INSERT OR UPDATE ON public.product_images FOR EACH ROW EXECUTE FUNCTION private.audit_catalog()",
+        "CREATE TRIGGER catalog_stamp BEFORE UPDATE ON public.product_images FOR EACH ROW EXECUTE FUNCTION private.catalog_stamp()"
+      ],
+      "constraints": [
+        {
+          "name": "product_images_caption_check",
+          "definition": "CHECK ((length(caption) <= 300))"
+        },
+        {
+          "name": "product_images_path_check",
+          "definition": "CHECK ((path ~ '^products/[a-f0-9-]+/[a-f0-9-]+\\.webp$'::text))"
+        },
+        {
+          "name": "product_images_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "product_images_product_id_fkey",
+          "definition": "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "name": "product_materials",
+      "grants": [
+        {
+          "role": "anon",
+          "delete": false,
+          "insert": false,
+          "select": false,
+          "update": false
+        },
+        {
+          "role": "authenticated",
+          "delete": false,
+          "insert": true,
+          "select": true,
+          "update": true
+        },
+        {
+          "role": "service_role",
+          "delete": true,
+          "insert": true,
+          "select": true,
+          "update": true
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "product_id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "material_id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "estimated_quantity",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "required": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX product_materials_pkey ON public.product_materials USING btree (id)",
+        "CREATE UNIQUE INDEX product_materials_product_id_material_id_key ON public.product_materials USING btree (product_id, material_id)",
+        "CREATE INDEX product_materials_material_idx ON public.product_materials USING btree (material_id)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER catalog_audit AFTER INSERT OR UPDATE ON public.product_materials FOR EACH ROW EXECUTE FUNCTION private.audit_catalog()",
+        "CREATE TRIGGER catalog_stamp BEFORE UPDATE ON public.product_materials FOR EACH ROW EXECUTE FUNCTION private.catalog_stamp()"
+      ],
+      "constraints": [
+        {
+          "name": "product_materials_estimated_quantity_check",
+          "definition": "CHECK (((estimated_quantity > (0)::numeric) AND (estimated_quantity < 'Infinity'::numeric)))"
+        },
+        {
+          "name": "product_materials_material_id_fkey",
+          "definition": "FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "product_materials_notes_check",
+          "definition": "CHECK ((length(notes) <= 1000))"
+        },
+        {
+          "name": "product_materials_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "product_materials_product_id_fkey",
+          "definition": "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "product_materials_product_id_material_id_key",
+          "definition": "UNIQUE (product_id, material_id)"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "name": "products",
+      "grants": [
+        {
+          "role": "anon",
+          "delete": false,
+          "insert": false,
+          "select": false,
+          "update": false
+        },
+        {
+          "role": "authenticated",
+          "delete": false,
+          "insert": true,
+          "select": true,
+          "update": true
+        },
+        {
+          "role": "service_role",
+          "delete": true,
+          "insert": true,
+          "select": true,
+          "update": true
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "sku",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "category_id",
+          "type": "uuid",
+          "required": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "base_price",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "estimated_minutes",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "is_customizable",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "customization_notes",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "required": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX products_pkey ON public.products USING btree (id)",
+        "CREATE UNIQUE INDEX products_sku_unique ON public.products USING btree (lower(TRIM(BOTH FROM sku)))",
+        "CREATE INDEX products_category_idx ON public.products USING btree (category_id)",
+        "CREATE INDEX products_active_name_idx ON public.products USING btree (is_active, name)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER catalog_audit AFTER INSERT OR UPDATE ON public.products FOR EACH ROW EXECUTE FUNCTION private.audit_catalog()",
+        "CREATE TRIGGER catalog_stamp BEFORE UPDATE ON public.products FOR EACH ROW EXECUTE FUNCTION private.catalog_stamp()"
+      ],
+      "constraints": [
+        {
+          "name": "products_base_price_check",
+          "definition": "CHECK (((base_price >= (0)::numeric) AND (base_price < 'Infinity'::numeric)))"
+        },
+        {
+          "name": "products_category_id_fkey",
+          "definition": "FOREIGN KEY (category_id) REFERENCES product_categories(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "products_customization_notes_check",
+          "definition": "CHECK ((length(customization_notes) <= 3000))"
+        },
+        {
+          "name": "products_description_check",
+          "definition": "CHECK ((length(description) <= 3000))"
+        },
+        {
+          "name": "products_estimated_minutes_check",
+          "definition": "CHECK ((estimated_minutes >= 0))"
+        },
+        {
+          "name": "products_name_check",
+          "definition": "CHECK (((length(TRIM(BOTH FROM name)) >= 1) AND (length(TRIM(BOTH FROM name)) <= 120)))"
+        },
+        {
+          "name": "products_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "products_sku_check",
+          "definition": "CHECK (((length(TRIM(BOTH FROM sku)) >= 1) AND (length(TRIM(BOTH FROM sku)) <= 60)))"
+        }
+      ]
+    },
+    {
+      "rls": true,
+      "name": "settings",
+      "grants": [
+        {
+          "role": "anon",
+          "delete": false,
+          "insert": false,
+          "select": false,
+          "update": false
+        },
+        {
+          "role": "authenticated",
+          "delete": false,
+          "insert": true,
+          "select": true,
+          "update": false
+        },
+        {
+          "role": "service_role",
+          "delete": true,
+          "insert": true,
+          "select": true,
+          "update": true
+        }
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "required": true
+        },
+        {
+          "name": "singleton",
+          "type": "boolean",
+          "required": true
+        },
+        {
+          "name": "business_name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "phone",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "currency",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "deposit_percentage",
+          "type": "numeric",
+          "required": true
+        },
+        {
+          "name": "hourly_rate",
+          "type": "numeric",
+          "required": false
+        },
+        {
+          "name": "order_number_format",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "logo_path",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "required": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "required": true
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX settings_pkey ON public.settings USING btree (id)",
+        "CREATE UNIQUE INDEX settings_singleton_key ON public.settings USING btree (singleton)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER catalog_audit AFTER INSERT OR UPDATE ON public.settings FOR EACH ROW EXECUTE FUNCTION private.audit_catalog()",
+        "CREATE TRIGGER catalog_stamp BEFORE UPDATE ON public.settings FOR EACH ROW EXECUTE FUNCTION private.catalog_stamp()"
+      ],
+      "constraints": [
+        {
+          "name": "settings_business_name_check",
+          "definition": "CHECK (((length(TRIM(BOTH FROM business_name)) >= 1) AND (length(TRIM(BOTH FROM business_name)) <= 120)))"
+        },
+        {
+          "name": "settings_currency_check",
+          "definition": "CHECK ((currency = 'CRC'::text))"
+        },
+        {
+          "name": "settings_deposit_percentage_check",
+          "definition": "CHECK (((deposit_percentage >= (0)::numeric) AND (deposit_percentage <= (100)::numeric)))"
+        },
+        {
+          "name": "settings_email_check",
+          "definition": "CHECK (((email ~ '^[^ @]+@[^ @]+\\.[^ @]+$'::text) AND (length(email) <= 254)))"
+        },
+        {
+          "name": "settings_email_no_whitespace",
+          "definition": "CHECK ((email !~ '[[:space:]]'::text))"
+        },
+        {
+          "name": "settings_hourly_rate_check",
+          "definition": "CHECK (((hourly_rate >= (0)::numeric) AND (hourly_rate < 'Infinity'::numeric)))"
+        },
+        {
+          "name": "settings_logo_path_check",
+          "definition": "CHECK ((logo_path ~ '^branding/[a-f0-9-]+\\.webp$'::text))"
+        },
+        {
+          "name": "settings_order_number_format_check",
+          "definition": "CHECK ((order_number_format = 'PED-AAAA-00001'::text))"
+        },
+        {
+          "name": "settings_phone_check",
+          "definition": "CHECK ((phone ~ '^\\+?[0-9 ()-]{8,25}$'::text))"
+        },
+        {
+          "name": "settings_pkey",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "name": "settings_singleton_check",
+          "definition": "CHECK (singleton)"
+        },
+        {
+          "name": "settings_singleton_key",
+          "definition": "UNIQUE (singleton)"
+        },
+        {
+          "name": "settings_phone_has_digit",
+          "definition": "CHECK ((phone ~ '[0-9]'::text))"
+        }
+      ]
+    }
+  ],
+  "buckets": [
+    {
+      "id": "catalog-images",
+      "mime": [
+        "image/webp"
+      ],
+      "size": 5242880,
+      "public": false
+    }
+  ],
+  "column_grants": [
+    {
+      "grantee": "authenticated",
+      "grantor": "postgres",
+      "table_name": "settings",
+      "column_name": "business_name",
+      "is_grantable": "NO",
+      "table_schema": "public",
+      "table_catalog": "postgres",
+      "privilege_type": "UPDATE"
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "postgres",
+      "table_name": "product_images",
+      "column_name": "caption",
+      "is_grantable": "NO",
+      "table_schema": "public",
+      "table_catalog": "postgres",
+      "privilege_type": "UPDATE"
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "postgres",
+      "table_name": "settings",
+      "column_name": "deposit_percentage",
+      "is_grantable": "NO",
+      "table_schema": "public",
+      "table_catalog": "postgres",
+      "privilege_type": "UPDATE"
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "postgres",
+      "table_name": "settings",
+      "column_name": "email",
+      "is_grantable": "NO",
+      "table_schema": "public",
+      "table_catalog": "postgres",
+      "privilege_type": "UPDATE"
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "postgres",
+      "table_name": "settings",
+      "column_name": "hourly_rate",
+      "is_grantable": "NO",
+      "table_schema": "public",
+      "table_catalog": "postgres",
+      "privilege_type": "UPDATE"
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "postgres",
+      "table_name": "product_images",
+      "column_name": "is_active",
+      "is_grantable": "NO",
+      "table_schema": "public",
+      "table_catalog": "postgres",
+      "privilege_type": "UPDATE"
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "postgres",
+      "table_name": "product_images",
+      "column_name": "is_main",
+      "is_grantable": "NO",
+      "table_schema": "public",
+      "table_catalog": "postgres",
+      "privilege_type": "UPDATE"
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "postgres",
+      "table_name": "settings",
+      "column_name": "phone",
+      "is_grantable": "NO",
+      "table_schema": "public",
+      "table_catalog": "postgres",
+      "privilege_type": "UPDATE"
+    }
+  ]
+}

@@ -110,6 +110,14 @@ try {
   const settings = (await admin.client.from("settings").select("*").single())
     .data;
   ok(settings.business_name === "caffi crochet", "Configuración inicial real");
+  const badSettings = await admin.client.from("settings")
+    .update({ email: "invalid\n@example.test" }).eq("singleton", true);
+  ok(badSettings.error?.code === "23514", "API rechaza correo con salto de línea en configuración");
+  const badEmail = await member.client.from("clients")
+    .insert({ name: prefix, email: "invalid\t@example.test" });
+  ok(badEmail.error?.code === "23514", "API rechaza correo con tabulación en clientes");
+  const badPhone = await member.client.from("clients").insert({ name: prefix, phone: "--------" });
+  ok(badPhone.error?.code === "23514", "API rechaza teléfono sin dígitos");
   await admin.page
     .getByRole("button", { name: "Guardar", exact: true })
     .first()
@@ -295,6 +303,15 @@ try {
   const photoForm = member.page
     .locator("form")
     .filter({ has: member.page.locator('input[type="file"]') });
+  await member.page.locator('input[type="file"]').setInputFiles({
+    name: "excesiva.png", mimeType: "image/png", buffer: Buffer.alloc(5242881),
+  });
+  await photoForm.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect(photoForm.getByRole("alert")).toContainText("hasta 5 MB");
+  ok(true, "Subida real desde UI rechaza tamaño excesivo antes de almacenar");
+  await member.page.locator('input[type="file"]').setInputFiles({
+    name: "falsa.png", mimeType: "image/png", buffer: Buffer.from("no-image"),
+  });
   await photoForm.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect(photoForm.getByRole("alert")).toContainText("Imagen inválida");
   const png = await sharp({
@@ -323,6 +340,12 @@ try {
     "Imagen validada registrada en Storage privado",
   );
   const imageId = photos.data[0].id;
+  for (const actor of [admin, member]) {
+    const download = await actor.context.request.get("http://localhost:3000/api/catalog-image/" + imageId);
+    ok(download.status() === 200 && download.headers()["content-type"]?.includes("image/webp"),
+      "Descarga privada permitida a rol activo y bytes WebP");
+    ok(download.headers()["cache-control"]?.includes("no-store"), "Imagen sin caché compartida");
+  }
   records.push(["product_images", imageId]);
   const publicClient = createClient(url, key, {
     auth: { persistSession: false },
@@ -362,6 +385,40 @@ try {
   );
   for (const img of clonedImages.data ?? [])
     records.push(["product_images", img.id]);
+  // Repetir edición y ciclo de estado por módulo, no inferirlos del formulario compartido.
+  for (const [path, table, id, label, field] of [
+    ["clientes", "clients", clientId, "Notas", "notes"],
+    ["categorias", "product_categories", categoryId, "Descripción", "description"],
+    ["materiales", "materials", materialId, "Unidad de medida *", "unit"],
+    ["productos", "products", productId, "Descripción", "description"],
+  ]) {
+    await go(member, "/" + path + "/" + id);
+    const value = field === "unit" ? "gramos" : "Edición auditada " + prefix;
+    const form = member.page.locator("form.catalog-form");
+    await form.getByLabel(label, { exact: true }).fill(value);
+    await form.getByRole("button", { name: "Guardar", exact: true }).click();
+    await expect(member.page.getByText("Cambios guardados").first()).toBeVisible();
+    ok((await member.client.from(table).select(field).eq("id", id).single()).data?.[field] === value,
+      "Edición UI persistida " + table);
+    for (const [button, enabled] of [["Desactivar", false], ["Activar", true]]) {
+      await member.page.getByRole("button", { name: button, exact: true }).click();
+      await member.page.locator(".swal2-confirm").click();
+      await expect(member.page.getByRole("button", { name: enabled ? "Desactivar" : "Activar", exact: true })).toBeVisible();
+      ok((await member.client.from(table).select("is_active").eq("id", id).single()).data?.is_active === enabled,
+        "Estado UI conservado " + table + " " + enabled);
+    }
+  }
+  await go(member, "/productos/" + productId);
+  await member.page.getByText(/Material · 2.5/).click();
+  const existingRelation = member.page.locator(".relation-grid form").first();
+  await existingRelation.getByLabel("Cantidad estimada *").fill("3.25");
+  await existingRelation.getByLabel("Notas", { exact: true }).fill("Estimación auditada");
+  await existingRelation.locator('select[name="is_active"]').selectOption("false");
+  await existingRelation.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect(member.page.getByText(/Material · 3.25 · Inactivo/)).toBeVisible();
+  const relationData = await member.client.from("product_materials").select("estimated_quantity,notes,is_active").eq("product_id", productId).single();
+  ok(relationData.data?.estimated_quantity === 3.25 && relationData.data.notes === "Estimación auditada" && !relationData.data.is_active,
+    "Edición/desactivación de estimación conserva relación sin consumo");
   await mkdir("test-results/phase2-real", { recursive: true });
   for (const width of [320, 375, 768, 1024, 1440]) {
     await member.page.setViewportSize({ width, height: 900 });
@@ -381,6 +438,11 @@ try {
         ),
         "Responsive real " + width + " " + path.split("/")[1],
       );
+      ok(await member.page.locator("main").evaluate((main) => {
+        const visible = (el) => el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0;
+        return [...main.querySelectorAll("button,.button,summary,.check-field")].filter(visible)
+          .every((el) => el.getBoundingClientRect().height >= 43 && el.getBoundingClientRect().width >= 43);
+      }), "Áreas táctiles reales " + width + " " + path.split("/")[1]);
     }
     await member.page.screenshot({
       path: "test-results/phase2-real/product-" + width + ".png",
@@ -395,6 +457,19 @@ try {
       "Configuración responsive " + width,
     );
   }
+  await member.page.emulateMedia({ reducedMotion: "reduce" });
+  ok(await member.page.locator(".button").first().evaluate((el) => getComputedStyle(el).transitionDuration === "0s"),
+    "Reduced-motion desactiva transiciones en navegador real");
+  await member.page.emulateMedia({ reducedMotion: "no-preference" });
+  // Retirar la referencia original no rompe la copia ni elimina bytes compartidos.
+  await go(member, "/productos/" + productId);
+  await member.page.getByRole("button", { name: "Retirar del catálogo" }).click();
+  await member.page.locator(".swal2-confirm").click();
+  await expect(member.page.getByText("Todavía no hay fotografías.", { exact: false })).toBeVisible();
+  ok((await member.context.request.get("http://localhost:3000/api/catalog-image/" + imageId)).status() === 404,
+    "Referencia retirada ya no se descarga por su ruta");
+  ok((await member.context.request.get("http://localhost:3000/api/catalog-image/" + clonedImages.data[0].id)).status() === 200,
+    "Retirar original conserva referencia privada duplicada");
   await go(member, "/clientes/" + clientId);
   await member.page
     .getByRole("button", { name: "Desactivar", exact: true })

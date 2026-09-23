@@ -93,6 +93,8 @@ test("Validación servidor: teléfono, correo y valores numéricos", () => {
   assert.throws(() => validateFields(catalogs.clientes.fields, f));
   f.set("email", "valid@example.test");
   assert.equal(validateFields(catalogs.clientes.fields, f).phone, "83639663");
+  f.set("phone", "--------");
+  assert.throws(() => validateFields(catalogs.clientes.fields, f), /Teléfono inválido/);
   const p = new FormData();
   p.set("sku", "A");
   p.set("name", "B");

@@ -248,6 +248,11 @@ input::placeholder {
   color: var(--color-muted);
   opacity: 0.8;
 }
+input:user-invalid,
+select:user-invalid,
+textarea:user-invalid {
+  border-color: var(--color-danger);
+}
 input:focus,
 select:focus {
   outline: 2px solid var(--color-primary);
@@ -1101,6 +1106,10 @@ details[open] > summary {
   }
   .catalog-table td[data-label]::before {
     display: none;
+  }
+  .catalog-table td[data-label="Costo unitario"],
+  .catalog-table th.numeric {
+    text-align: right;
   }
   .catalog-table .button {
     font-size: 13px;
