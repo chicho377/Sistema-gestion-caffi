@@ -130,6 +130,8 @@ Como mínimo: Administrador y Colaborador.
 
 Administrador tiene acceso completo conforme a las reglas de integridad e historial. Colaborador trabaja con clientes, productos, pedidos, cronómetro, inventario y envíos; registra pagos y gastos; consulta saldo pendiente necesario para operar pedidos. No administra usuarios, modifica configuración financiera, realiza anulaciones financieras, modifica sesiones históricas ni consulta auditoría, costos, márgenes o reportes financieros globales. Registrar gastos requiere ingresar su monto, sin habilitar consulta financiera general. Aplicar restricciones en datos y servicios, además de UI.
 
+D-20 permite consultar importes y comprobantes de gastos propios; Colaborador no consulta gastos ajenos. Solo edita descripción/notas y comprobante propios mientras el gasto esté activo. Categorías de gastos e ingresos manuales son exclusivos de Administración para su gestión; Colaborador puede consultar las categorías necesarias para registrar gastos.
+
 **RF-USR-05 — Alta privada V1**
 
 Sin registro público. Primer Administrador provisionado manualmente una sola vez en Supabase. Después, únicamente Administrador crea/invita usuarios mediante capacidades administrativas de Supabase ejecutadas exclusivamente en servidor. Inicialmente `collaborator`, salvo acción administrativa explícita autorizada; siempre con registro en `profiles`. El invitado recibe correo para establecer/confirmar acceso. Solo Administrador modifica rol/estado y ningún usuario modifica su propio rol ni se eleva privilegios. `service_role` nunca se expone al navegador.
@@ -176,9 +178,11 @@ Permitir duplicar un producto para crear variantes.
 ### 5.4 Pedidos / Ventas
 
 **RF-PED-01 — Creación**  
-Crear pedidos asociados a un cliente con número único, por ejemplo `PED-2026-00001`.
+Crear pedidos asociados a un cliente con UUID interno desde su creación. El número comercial único, por ejemplo `PED-2026-00001`, se asigna al confirmar, no durante Cotización.
 
 Formato inicial aprobado `PED-AAAA-00001`, reinicio anual y generación atómica en servidor/base de datos, sin duplicados concurrentes. Identificador asignado estable. Proyecto y pedido son sinónimos en V1; no existe entidad de proyectos independiente.
+
+D-19: confirmar asigna atómicamente número y confirmed_at. Cotización no consume consecutivo. En históricos autorizados el año del número corresponde al año de confirmed_at en America/Costa_Rica, no necesariamente al de creación del registro.
 
 **RF-PED-02 — Detalle**  
 Registrar:
@@ -193,6 +197,10 @@ Registrar:
 - precio total.
 
 Permitir descuento por línea y descuento general. Suma de cantidad × precio unitario menos descuentos de líneas = subtotal; subtotal menos descuento general = total final. Aplicar cada descuento una sola vez.
+
+D-20: cantidad vendida entera positiva. Precio e importes máximo 2 decimales; calcular cada línea con su descuento y redondear a 2, sumar líneas ya redondeadas, aplicar descuento general y obtener total a 2 decimales. Conservar descuentos monetarios de línea/general; no añadir modalidades. UI/API rechazan mayor escala. D-21: ROUND HALF UP a 2 decimales, también en servidor/BD.
+
+Admitir líneas de catálogo y personalizadas: en estas product_id NULL, nombre/cantidad/precio obligatorios y descripción opcional. Confirmar exige al menos una línea activa. Guardar snapshots comerciales suficientes (nombre, descripción aplicada, SKU cuando exista, precio, cantidad, descuento y personalización) sin depender de cambios futuros del catálogo. No seleccionar clientes/productos inactivos en altas normales; conservar referencias existentes. Admin puede utilizarlos en históricos autorizados.
 
 **RF-PED-03 — Días restantes**  
 Calcular automáticamente días calendario restantes a la fecha solicitada.
@@ -220,6 +228,10 @@ Registrar porcentaje y monto de adelanto solicitado/recibido. Valor habitual con
 
 Porcentaje calculado sobre total final. Conservar monto originalmente solicitado (`deposit_required_amount` o equivalente), sin recalcularlo silenciosamente con cambios posteriores.
 
+El porcentaje se toma al pasar de Cotización a Confirmado; en esa transición se persiste deposit_required_amount y el porcentaje aplicado. Cambios posteriores en Configuración no modifican esos valores históricos.
+
+Antes de confirmar, solo Admin puede fijar un porcentaje especial auditado; de otro modo se toma el habitual vigente al confirmar. Guardar deposit_percentage_applied. Cambios posteriores del total tampoco reescriben el adelanto histórico. Umbral operativo = min(deposit_required_amount, total_actual); cumplimiento se muestra separado del estado financiero.
+
 **RF-PED-09 — Saldo**  
 Saldo = total del pedido - pagos válidos recibidos.
 
@@ -242,23 +254,52 @@ Estados:
 - En producción
 - Listo
 - Entregado
+- Cancelado (con motivo e historial conservado)
+
+Flujo ordinario: Cotización → Confirmado → En producción → Listo → Entregado, sin saltos. Confirmado → Cotización prohibido. Admin y Colaborador operan el flujo ordinario según D-01, salvo confirmación de total cero reservada a Admin. Pasar a producción exige cubrir el umbral operativo de adelanto o override Admin con motivo y auditoría. Entregar no exige saldo cero. Cancelado es terminal; continuar exige nuevo pedido. Admin puede corregir/reabrir con motivo y auditoría; Entregado → Listo explícitamente permitido. D-21: retrocesos solo Admin activo, un estado por operación: En producción → Confirmado, Listo → En producción y Entregado → Listo; motivo, actor, timestamp y auditoría before/after obligatorios. Colaborador solo cancela Cotización; cancelar Confirmado/En producción/Listo exige Admin. Entregado no se cancela directamente: primero reapertura a Listo, luego cancelación; ambas Admin con motivo. Matriz en ARCHITECTURE.md.
 
 **RF-PED-14 — Estado financiero**  
-Estados independientes:
+Estado derivado, independiente del productivo y nunca editable manualmente:
 
 - Sin adelanto
-- Parcialmente pagado
+- Abonado (partially_paid)
 - Pagado
+
+Sin adelanto: total > 0 y pagos válidos = 0. Abonado: 0 < pagos válidos < total. Pagado: pagos válidos >= total; incluye total cero autorizado sin crear un pago cero. La integridad prohíbe pagos superiores al total. Cumplimiento del adelanto es un indicador distinto.
 
 **RF-PED-15 — Cancelación**  
 Permitir cancelar conservando historial y motivo.
 
 Motivo obligatorio; se permite cancelar con pagos. Cancelar no anula pagos válidos ni elimina su ingreso. Reembolsos fuera de V1, reservados como funcionalidad futura.
 
+La cancelación conserva todos los pagos, no genera devolución automática y excluye al pedido de ventas activas y utilidad realizada, sin alterar ingresos efectivamente recibidos.
+
+D-21: Colaborador cancela únicamente Cotización. Cancelar Confirmado/En producción/Listo requiere Admin. Entregado no admite cancelación directa; Admin debe reabrir a Listo con motivo y luego cancelar con motivo, conservando evidencia separada de ambas acciones. Cancelado es terminal.
+
+**RF-PED-16 — Edición y cierre financiero (D-19)**
+
+En Cotización el pedido puede modificarse libremente dentro de validaciones/permisos. Después de Confirmado, cambios de cantidades, precios o descuentos se auditan y recalculan saldo. Total final nunca inferior a pagos válidos recibidos, también bajo concurrencia. Entregado bloquea modificaciones financieras normales del pedido; D-20 contempla reapertura Entregado → Listo solo Admin con motivo/auditoría, y permite cobrar saldo sin reabrir. Preparación documental, sin implementación todavía.
+
+Cliente editable en Cotización; después de confirmar exige Admin y motivo, y se prohíbe si existen pagos válidos. Conservar historia del cliente aplicado en los pagos anulados, sin reescribirla al cambiar el cliente actual.
+
+**RF-PED-17 — Total cero excepcional (D-19)**
+
+Solo Admin confirma un total cero, con motivo obligatorio y auditoría. Cambios posteriores de líneas, cantidades, precios o descuentos invalidan la autorización anterior; si el pedido confirmado queda en cero debe existir nueva autorización válida, sin reutilizar la previa. Estado derivado Pagado; nunca crear un pago ficticio de cero.
+
+**RF-PED-18 — Históricos y fechas (D-20)**
+
+Solo Admin crea registros históricos. created_at registra el instante real de alta; fechas comerciales pueden ser anteriores. Aplicar la cronología definitiva D-21 de RF-FIN-02. Número comercial nunca se renumera automáticamente. Corrección auditada de confirmed_at admitida dentro del mismo año del consecutivo; cambio de año bloqueado en operación normal y reservado a tratamiento administrativo excepcional.
+
+**RF-PED-19 — Entrega vigente y reapertura (D-21)**
+
+Listo → Entregado fija delivered_at con fecha/hora efectiva, no futura y >= confirmed_at. Entregado → Listo requiere Admin activo, motivo, actor, timestamp y auditoría before/after; deja delivered_at NULL y conserva la fecha anterior en auditoría. Nueva entrega fija nueva fecha efectiva. delivered_at solo existe mientras estado sea Entregado. Cobrar saldo posterior no cambia delivered_at ni exige reapertura.
+
 ### 5.5 Pagos e ingresos
 
 **RF-PAG-01 — Registro de pago**  
 Guardar pedido, cliente, fecha, monto, tipo, método, referencia y observaciones.
+
+Monto CRC estrictamente mayor a cero, en decimal y máximo 2 decimales. Sin pagos cero ni sobrepagos. Admin y Colaborador registran pagos en Confirmado, En producción, Listo y Entregado. Sin pagos nuevos en Cotización ni Cancelado. Cobrar saldo de Entregado no requiere reapertura.
 
 **RF-PAG-02 — Métodos**  
 Efectivo, SINPE Móvil, Transferencia, Tarjeta y Otro.
@@ -269,7 +310,7 @@ Un pedido puede recibir varios pagos.
 **RF-PAG-04 — Anulación**  
 Un pago incorrecto se anula con motivo y trazabilidad; no se elimina definitivamente.
 
-Anulación financiera exclusiva de Administrador.
+Anulación financiera exclusiva de Administrador con motivo, actor y fecha. Importe de pago creado inmutable; corregirlo exige anulación y nuevo pago sujeto al estado/saldo vigente. Anular un pago de un Cancelado no habilita un reemplazo allí. Nunca borrar físicamente.
 
 **RF-ING-01 — Ingresos**  
 Reconocer ingresos de pedidos automáticamente desde pagos válidos, sin crear una segunda fila de ingreso por pago. `payments` es su fuente oficial. Registrar ingresos ajenos a pedidos en `manual_income` o equivalente. El reporte combina ambas fuentes válidas mediante consulta/vista autorizada sin doble contabilización. Diferenciar ingreso de venta no cobrada.
@@ -279,6 +320,10 @@ Adelanto, pago final, venta de producto, tarjetas, stickers u otros.
 
 **RF-ING-03 — Información**  
 Fecha, monto, método, descripción y pedido relacionado cuando corresponda.
+
+**RF-ING-04 — Ingresos manuales (D-20)**
+
+Solo Admin crea/consulta/corrige/anula manual_income. Moneda CRC y monto estrictamente positivo, máximo 2 decimales. Nunca borrar físicamente; anulación conserva fila, actor, fecha y motivo. Los ingresos ligados a pedidos se obtienen únicamente de payments.
 
 ### 5.6 Gastos
 
@@ -298,6 +343,14 @@ Proveedor opcional y comprobante opcional.
 Gastos históricos se anulan, no se destruyen.
 
 Anulación exclusiva de Administrador, con motivo y trazabilidad.
+
+**RF-GAS-06 — Moneda y tasa histórica (D-20)**
+
+Gastos estrictamente positivos en CRC o USD, máximo 2 decimales. Gasto USD conserva monto original, moneda, tasa aplicada, fecha de tasa y resultado CRC. Usar venta de referencia correspondiente a la fecha efectiva cuando exista; histórico sin tasa disponible solo puede completarlo Admin con tasa histórica, motivo y auditoría. Conservar fecha/procedencia real al utilizar última tasa válida ante fallo; no inventar referencia de otra fecha ni recalcular registros previos con exchange_rates. D-21: conversión decimal con tasa completa y ROUND HALF UP únicamente sobre equivalente final a 2 decimales.
+
+**RF-GAS-07 — Permisos y comprobantes (D-20)**
+
+Admin tiene lectura total, alta, corrección, anulación, comprobantes y gestión de categorías. Colaborador registra y consulta exclusivamente sus gastos/comprobantes; no ve listado global ni administra categorías ni anula. Tras registrar, solo modifica descripción/notas y comprobante propios mientras el gasto esté activo. No cambia monto, moneda, tasa, fecha, vínculo al pedido ni otros campos fuera de esa lista. Comprobantes privados y sin destrucción de historia al reemplazarlos; políticas tanto en metadatos como en Storage. Gastos nunca se borran físicamente.
 
 ### 5.7 Inventario
 
@@ -435,6 +488,8 @@ Indicadores financieros globales, costos y márgenes solo para Administrador. Co
 
 Zona horaria `America/Costa_Rica`, semana desde lunes. Ingresos por fecha efectiva del pago o recepción manual; gastos por fecha del gasto. Venta confirmada al pasar de Cotización a Confirmado. Ganancia realizada por período usa pedidos Entregados; ganancia estimada de activos se muestra separadamente. Conservar fecha/hora de confirmación y entrega para estos cálculos.
 
+Confirmado representa venta comprometida; Entregado se utiliza para resultado realizado. Cancelado conserva historia, pero no integra ventas activas ni utilidad realizada. Esta definición exige conservar estados/marcas desde Fase 3; no adelanta cálculos de rentabilidad ni reportes.
+
 ### 5.12 Configuración
 
 **RF-CON-01** Nombre del negocio, logo, teléfono, correo, moneda.  
@@ -469,6 +524,8 @@ Zona horaria `America/Costa_Rica`, semana desde lunes. Ingresos por fecha efecti
 
 ## 6. Reglas de negocio
 
+**RF-FIN-01 — Precisión monetaria (D-19/D-20)** Todos los importes monetarios se almacenan con numeric/decimal, nunca float. Precios/importes y porcentajes máximo 2 decimales; presentación y finales a 2 decimales. UI/API rechazan mayor escala, con garantía equivalente en BD sin redondeo silencioso de entradas inválidas. Cantidad de productos vendidos entera positiva; no modificar cantidades decimales de materiales. Redondear líneas, sumar para subtotal y aplicar descuento general para total final. D-21: ROUND HALF UP a 2 decimales en líneas, total final, deposit_required_amount y equivalente monetario de conversiones; usar tasa completa sin redondearla previamente. Mismo contrato en servidor/BD; no solo JavaScript. Las tasas de conversión no son importes: conservar precisión original. Fase 2 cerrada; esta actualización no modifica código, datos ni historia existentes.
+
 - Saldo pendiente = total del pedido - suma de pagos válidos.
 - Adelanto configurable; 50 % inicial habitual.
 - Ingreso significa dinero efectivamente recibido.
@@ -481,6 +538,22 @@ Zona horaria `America/Costa_Rica`, semana desde lunes. Ingresos por fecha efecti
 - Registros financieros/históricos deben anularse o desactivarse cuando corresponda.
 - Montos negativos no permitidos salvo operación explícita y controlada.
 - Cada pedido conserva identificador único y estable.
+
+**RF-FIN-02 — Cronología empresarial definitiva (D-21)**
+
+America/Costa_Rica determina el día empresarial. created_at refleja el momento real de registro y no se modifica para simular históricos. Fecha efectiva anterior a hoy requiere Admin, salvo timestamps internos automáticos; no se admiten fechas efectivas futuras, excepto requested_delivery_date. Conservar fechas de filas existentes al editar campos permitidos no equivale a registrar un nuevo histórico.
+
+| Campo | Validación |
+|---|---|
+| order_date | No futura; normal = hoy; fecha histórica solo Admin |
+| requested_delivery_date | >= order_date; puede ser futura o pasada; no necesita ser posterior a confirmed_at; atraso según reglas vigentes |
+| confirmed_at | No futura; fecha local >= order_date; solo Admin establece/corrige histórico; respetar año del consecutivo sin renumerar |
+| payment_date | No futura; >= confirmed_at; admite cobros posteriores a entrega; Colaborador registra hoy, histórico solo Admin |
+| delivered_at | No futura; >= confirmed_at; solo con estado Entregado; reapertura/reentrega RF-PED-19; histórico solo Admin |
+| income_date | No futura; manual_income exclusivo Admin, incluidos históricos |
+| expense_date | No futura; Colaborador hoy, histórico solo Admin; puede anteceder a confirmación aunque vinculada a pedido; determina tasa de USD |
+
+Servidor/BD garantizan estas reglas y revalidan coherencia al corregir fechas; no depender de HTML ni del reloj/zona del navegador. No cambiar timestamps de auditoría para representar fechas comerciales.
 
 ## 7. Ejemplo de cálculo
 
@@ -551,6 +624,8 @@ Ganancia por hora aproximada: ₡1.230,77
 8. Usuario vuelve al login.
 
 ## 12. Resultado esperado
+
+La preparación documental de Fase 3 incorpora D-19/D-20/D-21 sin autorizar código/migraciones. B3-01 a B3-10 y C3-01 a C3-03 están resueltos; no se identifican bloqueantes funcionales restantes para Fase 3. Requiere siguiente autorización expresa antes de implementar. No se adelantan fases posteriores.
 
 Una sola aplicación web segura y 100 % responsive, con misma capacidad funcional desde celular, tablet y computadora, autenticación, recuperación por correo, datos centralizados en Supabase y despliegue en Vercel.
 

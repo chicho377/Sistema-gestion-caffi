@@ -5,7 +5,7 @@
 > Este documento traduce los requerimientos aprobados a una estructura técnica para Codex.  
 > Las decisiones de Next.js, TypeScript y Tailwind CSS forman parte del paquete de implementación acordado; Supabase y Vercel provienen directamente de los requerimientos funcionales.
 
-Las decisiones aprobadas de V1 se registran en [DECISIONS.md](DECISIONS.md). Fase 1 cerrada para desarrollo; autorizada únicamente Fase 2 adicional, según D-18. Fase 3 requiere nueva aprobación.
+Las decisiones aprobadas de V1 se registran en [DECISIONS.md](DECISIONS.md). Fases 1 y 2 y auditoría de Fase 2 aprobadas para desarrollo (checkpoint 272bd0d). D-19/D-20/D-21 autorizan únicamente preparación documental de Fase 3; su código y migraciones requieren nueva autorización.
 
 ## 1. Objetivos arquitectónicos
 
@@ -169,16 +169,28 @@ Representa la venta/encargo y su estado.
 
 Proyecto es sinónimo de pedido en V1; no crear `projects`. Descuentos de líneas antes del descuento general; adelanto sobre total final, conservando monto originalmente solicitado. Sin sobrepagos. Cancelar exige motivo y conserva pagos válidos; reembolsos fuera de V1. Consecutivo `PED-AAAA-00001`, anual, estable y generado atómicamente en servidor/base de datos.
 
+Confirmación (D-19): una sola transacción valida el pedido y eventual autorización de total cero, toma el porcentaje, persiste el adelanto, fija confirmed_at y asigna el consecutivo de ese año. Cotización conserva UUID pero no consume número comercial. Históricos autorizados usan año de confirmed_at en America/Costa_Rica. Bloqueo del contador anual y protección frente a reintentos deben impedir números duplicados o una segunda confirmación del mismo pedido.
+
+Ediciones de Cotización respetan validaciones generales. Cambios financieros tras confirmar se ejecutan con auditoría y recálculo de saldo, coordinados transaccionalmente con pagos para impedir total menor a lo recibido. Entregado bloquea cambios financieros normales del pedido; D-20 permite cobros posteriores sin reapertura y contempla Entregado → Listo por Admin con motivo/auditoría. La matriz definitiva está en D-21/C3-02; nada se implementa por esta autorización documental.
+
+financial_status no se almacena como columna mutable. Una proyección autorizada deriva total pagado válido, saldo, Sin adelanto/Abonado/Pagado y cumplimiento del adelanto operativo por separado. Total cero autorizado deriva Pagado sin pago cero. El porcentaje especial previo requiere Admin/auditoría; confirmar fija deposit_percentage_applied y deposit_required_amount. Umbral operativo = min(adelanto histórico, total actual).
+
+Autorización de total cero vinculada técnicamente a una revisión comercial del pedido: cualquier cambio de líneas/cantidades/precios/descuentos incrementa esa revisión e invalida evidencia anterior. En un confirmado que permanece en cero, edición y nueva autorización Admin con motivo deben ser atómicas; no dejar un confirmado gratuito sin evidencia vigente. Históricos y cambios de cliente posteriores a confirmar requieren Admin; ningún cambio de cliente con pagos válidos. Pagos anulados conservan cliente histórico, sin actualización en cascada.
+
 ### Pago
 Representa dinero aplicado a un pedido.
 
 `payments` es la única fuente de ingresos de pedidos; cada pago válido cuenta una vez, incluso si el pedido se cancela. Operaciones concurrentes deben proteger saldo y total.
+
+Monto de pago CRC mayor a cero y máximo 2 decimales; inmutable después del alta. Admin/Colaborador registran en confirmed/in_production/ready/delivered. Quote/cancelled rechazan pagos nuevos. Solo Admin anula con motivo, actor, fecha y auditoría; corrección mediante nuevo pago sujeto a reglas vigentes. Sin DELETE físico ni devolución automática. Usar numeric/decimal y cálculo decimal exacto, nunca float como fuente de verdad. Validar escala antes de cualquier cast que redondee; etapas aprobadas y ROUND HALF UP a 2 decimales según D-21, coherente en servidor/BD.
 
 ### Ingreso
 Representa dinero efectivamente recibido y su clasificación. `manual_income` contiene solo ingresos ajenos a pedidos. El reporte combina pagos válidos e ingresos manuales válidos mediante consulta/vista autorizada. No existe una segunda fila de ingreso por pago.
 
 ### Gasto
 Representa egreso.
+
+D-20: monto positivo CRC/USD; guardar original/moneda/tasa aplicada/fecha/procedencia/resultado CRC. Fecha efectiva define referencia cuando esté disponible; solo Admin proporciona tasa histórica faltante con motivo/auditoría. La caché exchange_rates nunca recalcula operaciones guardadas. Colaborador registra y consulta sus gastos y comprobantes, y únicamente modifica descripción/notas/comprobante propios mientras estén activos. Admin administra categorías y correcciones/anulaciones. manual_income positivo CRC exclusivo de Admin. Nunca borrar filas financieras.
 
 ### Costeo
 Calcula costo real del proyecto.
@@ -261,6 +273,8 @@ Evitar tres implementaciones independientes con reglas distintas.
 
 Reconocimiento: ingresos por fecha efectiva del pago/recepción manual; gastos por fecha del gasto; ventas al confirmar la cotización (`confirmed_at`). Ganancia realizada por período solo de pedidos Entregados, usando `delivered_at`; ganancia estimada de pedidos activos separada. No mezclar flujo de efectivo con rentabilidad.
 
+D-19: Confirmado es venta comprometida; Cancelado no se incluye en ventas activas ni utilidad realizada, aunque conserva pagos válidos como ingresos. Fase 3 conserva hechos/fechas necesarios sin implementar el motor de utilidad ni reportes posteriores.
+
 En V1 hay máximo un envío/entrega por pedido. Marcar envío Entregado no cambia silenciosamente el pedido; puede ofrecerse una acción explícita adicional.
 
 ## 9. Seguridad
@@ -338,6 +352,85 @@ Contrato aprobado de conversión (D-18 / RF-CON-06): el proveedor público V1 ac
 ### Fase 3 — Pedidos y finanzas
 
 Pedidos, líneas, descuentos, adelanto histórico, consecutivo, alertas, estados y marcas de confirmación/entrega. Pagos, ingresos manuales, gastos y anulaciones autorizadas. Validación concurrente de saldo y auditoría.
+
+**Preparación documental, sin implementación autorizada todavía.** Aplicar D-19/D-20/D-21; C3-01 a C3-03 resueltos, sin bloqueantes funcionales restantes. Modelo: orders, order_items, payments, manual_income, expense_categories y expenses; order_counters, order_files y expense_files como auxiliares técnicos propuestos. Reutilizar clients, products, profiles, settings, audit_log y exchange_rates. Sin sales ni ingresos duplicados de payments.
+
+Confirmar/modificar/cobrar/anular/cancelar/reabrir deben hacer autorización por perfil vigente, validación, bloqueo de filas relevantes, cambios derivados y auditoría en una transacción. No usar UI como única barrera ni service_role como sustituto de permiso. RPCs especializadas controlan columnas, estados, propietario inmutable y consistencia de la suma de pagos. Toda operación de pago y edición/cancelación del pedido comparte bloqueo del pedido para evitar carreras. Lectura propia de gastos definida por D-20, no por ocultar campos del listado global.
+
+Fases posteriores no se adelantan: sin movimientos de inventario, cronómetro, envíos, valoración, utilidad calculada ni reportes. FK opcional de expenses a order_items del mismo pedido sin prorrateos. Conservación de tasa aplicada según D-20. Dashboard continúa shell; alertas se implementarán en listado/detalle, dejando integración del dashboard para su fase.
+
+#### Matriz definitiva de transiciones de Fase 3 (D-21)
+
+| Origen → destino | Actor activo | Condición |
+|---|---|---|
+| Cotización → Confirmado | Admin / Colaborador | >=1 línea activa; validaciones; total cero solo Admin con motivo; snapshot adelanto y número atómicos |
+| Confirmado → En producción | Admin / Colaborador | Pagos válidos cubren min(deposit_required_amount,total); excepción solo Admin con motivo/auditoría |
+| En producción → Listo | Admin / Colaborador | Transición ordinaria explícita |
+| Listo → Entregado | Admin / Colaborador | Sin exigir saldo cero; delivered_at = fecha/hora efectiva vigente, no futura y >= confirmed_at; histórico solo Admin |
+| Cotización → Cancelado | Admin / Colaborador | Motivo obligatorio |
+| Confirmado / En producción / Listo → Cancelado | Solo Admin | Motivo obligatorio; conservar pagos, sin devolución |
+| En producción → Confirmado | Solo Admin activo | Motivo, timestamp, actor y auditoría before/after |
+| Listo → En producción | Solo Admin activo | Motivo, timestamp, actor y auditoría before/after |
+| Entregado → Listo | Solo Admin activo | Motivo, timestamp, actor y auditoría before/after; delivered_at pasa a NULL y la fecha anterior queda auditada |
+| Entregado → Cancelado | Ninguno directamente | Reabrir primero a Listo por Admin con motivo, luego cancelar por Admin con motivo |
+| Confirmado → Cotización | Ninguno | Prohibido explícitamente |
+| Cancelado → cualquier estado | Ninguno | Terminal; crear nuevo pedido |
+| Saltos del flujo ordinario | Ninguno | Prohibidos; no confundir carga histórica Admin con salto ordinario |
+
+Entregado admite cobros sin transición y sin modificar delivered_at. La entrega vigente existe únicamente en estado delivered; reapertura la borra de la columna activa (NULL), no de auditoría; reentrega asigna nueva fecha efectiva. Otros saltos hacia atrás están prohibidos, incluso para Admin. Anulación Admin de pago conserva historia y recalcula resumen, sin transición productiva automática. Tampoco invalidar retroactivamente el paso a producción si un pago se anula después; recalcular indicador de adelanto y conservar auditoría del paso autorizado.
+
+#### RLS, operaciones y archivos previstos
+
+Cronología definitiva D-21: usar America/Costa_Rica para el día empresarial y reloj de servidor/BD para instantes. created_at real/inmutable; order_date hoy salvo histórico Admin; requested_delivery_date >= order_date, futura permitida y sin exigir posterioridad a confirmación. confirmed_at no futuro y fecha local >= order_date; payment_date no futuro y >= confirmed_at; delivered_at no futuro y >= confirmed_at, solo estado delivered. income_date/expense_date no futuras; manual_income exclusivo Admin; Colaborador paga/registra gasto con fecha empresarial actual. Cualquier fecha efectiva de un día anterior exige Admin; gastos preparatorios pueden anteceder a confirmed_at. Matriz completa RF-FIN-02 / DATABASE sección 4. No limitar permisos de editar notas propias por antigüedad de una fecha que no se cambia.
+
+Propuesta de validación: constraints de estructura y funciones/triggers para condiciones de reloj/actor/otras filas, más validación de servidor. Correcciones revalidan relaciones existentes sin cambiar created_at ni año del número automáticamente. delivered_at NULL al reabrir y evidencia anterior en auditoría atómica. HALF UP decimal coherente para líneas/total/adelanto/equivalente de conversión; tasa preservada sin redondeo previo; nunca usar solo JavaScript o cast coercitivo para admitir entradas de mayor escala.
+
+- Perfil activo consultado en cada operación; anónimo/inactivo sin datos, incluso con JWT anterior. Rol de profiles, nunca user_metadata editable.
+- Pagos: lectura operativa vinculada al pedido accesible; alta por operación atómica para Admin/Colaborador. Sin UPDATE directo de importe ni DELETE. Anulación vía acción Admin; no proporcionar agregado financiero global a Colaborador.
+- Gastos: SELECT Admin o created_by = auth.uid() para Colaborador activo. Altas atribuidas por servidor/BD; no aceptar autor arbitrario. Cambios por RPC con lista cerrada de campos y comparación anterior/nueva; RLS de filas sola no impide editar monto de una fila propia.
+- manual_income: ninguna lectura/escritura para Colaborador. expense_categories: lectura operativa para registrar gastos, mantenimiento exclusivo Admin.
+- Sin grants de escritura directa que evadan cálculo, inmutabilidad, auditoría o autorizaciones; funciones privilegiadas solo en private, search_path fijo/vacío, EXECUTE mínimo y controles explícitos de actor. Wrappers expuestos conforme al patrón de Fase 1/2. Vistas con RLS del invocador y permisos de columnas mínimos.
+- Propuesta técnica: order_files y expense_files con FK real y metadatos privados; bucket privado para referencias y otro para comprobantes. Archivo de gasto autoriza según gasto padre, no solo uploaded_by/ruta. No permitir vincular archivo propio a gasto ajeno ni cambiar propietario/entidad para obtener acceso.
+- Mantener patrón de descarga por servidor con JWT/RLS y verificación de perfil en cada solicitud, sin caché compartida ni URLs públicas; no emitir URL firmada reutilizable que mantenga acceso tras inactivación. Upload exclusivo servidor con tipo/tamaño/contenido verificados; rutas no reutilizables, sin overwrite/upsert destructivo. Reemplazo conserva objeto/metadatos anteriores, marca versión vigente y audita. Política de retención posterior no autoriza borrado ahora.
+
+Fuentes técnicas revisadas: [RLS y grants](https://supabase.com/docs/guides/database/postgres/row-level-security), [Storage access control](https://supabase.com/docs/guides/storage/security/access-control). Esta es revisión de diseño; no prueba de RLS desplegada.
+
+#### Plan aprobado de subfases (D-21), aún sin autorización de implementación
+
+1. **3A — Pedidos, líneas, cotizaciones y estados.** Modelo de pedido/líneas, snapshots, cotización editable, cálculo decimal, lectura/listado/detalle, fechas/alertas y contrato de estados; RLS/auditoría/archivos de referencias del pedido. Confirmación operativa pendiente de 3B: no habilitar un camino incompleto que omita número/adelanto.
+2. **3B — Confirmación, consecutivos, adelantos y pagos.** Confirmación atómica y anual, porcentaje/importe histórico, total cero autorizado, pagos/anulaciones, saldo/estado derivados y gate de adelanto; integración real de transiciones/reaperturas con pagos y delivered_at.
+3. **3C — Ingresos manuales.** Registro CRC positivo exclusivo Admin, corrección/anulación histórica sin borrar ni duplicar pagos.
+4. **3D — Gastos, categorías y comprobantes.** Categorías Admin, CRC/USD con tasa histórica, acceso propio de Colaborador, edición limitada, anulaciones y comprobantes privados versionados.
+5. **3E — Validación integral, permisos, auditoría y pruebas reales.** Recorridos integrados y concurrencia; Admin/Colaborador/inactivo/anónimo, API/RLS/Storage reales, auditoría y Security Advisors; responsive 320/375/768/1024/1440; lint/typecheck/tests/build/E2E; evidencia local/simulada/real separada. No diferir la seguridad inicial hasta 3E.
+
+Cada lote futuro incluye pruebas locales y revisión de migración; antes de remoto: comprobar DEV conectado, comparar historial, db push --dry-run, revisar alcance, aplicar solo lote autorizado y validar RLS real/Advisors. No reset, DROP, TRUNCATE ni borrados compensatorios. No declarar pruebas reales si solo hubo simulación. Plan sin autorización actual ni avance a Fase 4.
+
+#### Plan técnico detallado de 3A
+
+- **Contrato:** tipos/validadores de encabezado, líneas, snapshots y matriz definitiva; numeric/decimal exacto y ROUND HALF UP coherente servidor/BD; entradas con escala excesiva rechazadas. Sin tipos nuevos de descuento, sin floats como fuente de cálculo.
+- **Persistencia:** orders, order_items y order_files; UUID en Cotización, order_number/confirmed_at/adelanto sin asignar hasta confirmación 3B. Campos previstos para ciclo posterior pueden ser nullable bajo constraints por estado; financial_status no es columna mutable. Reutilizar clients/products/profiles/audit_log. Transacciones para edición del conjunto de líneas/totales y control de versión para evitar sobrescrituras concurrentes.
+- **Operaciones:** crear/consultar/editar Cotización, líneas de catálogo/personalizadas, desactivar líneas conservando historial, cancelar Cotización con motivo. Validar activos o histórico Admin, fechas, precios/cantidades/descuentos, snapshots y propiedad de archivos. Preparar contrato de las transiciones posteriores y sus pruebas locales; no exponer confirmación, cobros ni cambio arbitrario de production_status antes de 3B.
+- **Cronología y estados:** reglas RF-FIN-02 en servidor/BD; día empresarial desde America/Costa_Rica, created_at desde reloj del sistema. Metadatos de confirmación/entrega protegidos de edición directa. Tras 3B, reapertura limpia delivered_at en columna activa y audita valor anterior; retrocesos un paso/Admin; cancelación confirmada solo Admin. No insertar confirmados ficticios en DEV para probar 3A.
+- **UI:** listado/búsqueda/detalle y formulario responsive, tarjetas móviles/tablas desktop, líneas personalizadas, totales, notas/referencias y alertas; loading/vacío/error, SweetAlert2 para cancelar y Sonner para guardar; Lucide, tokens, scrollbar, reduced-motion y controles táctiles del sistema visual. No dashboard de negocio.
+- **Seguridad:** perfil activo en cada lectura/escritura/descarga; mutaciones por funciones autorizadas y grants mínimos; RLS sin acceso anónimo/inactivo; auditoría transaccional. Archivos de pedido privados con bytes/tamaño/tipo validados, sin sobrescritura ni borrado histórico; no crear comprobantes de gastos en 3A.
+
+Dependencia explícita: 3A no puede validar confirmación/ciclo completo contra datos reales sin 3B. Se entregará verificable como cotizaciones y contrato de estados; los recorridos con pagos/consecutivos serán pruebas de integración de 3B y 3E. Esto no cambia reglas funcionales ni las simula en producción.
+
+#### Migraciones previstas para 3A (solo planificación)
+
+- **Pedido y líneas:** orders/order_items, constraints/índices/FKs, validadores decimales/cronología, transacciones de Cotización, RLS/grants y triggers de auditoría. Estados definidos, escrituras directas a estados posteriores bloqueadas hasta operaciones completas de 3B.
+- **Referencias privadas:** order_files y bucket/políticas para archivos de pedido, coherencia de metadatos/objeto, autorización por pedido y perfil activo, auditoría de cambios/versiones.
+- No generar archivos SQL ahora ni inventar timestamps de migración. order_counters/payments y confirmación pertenecen a 3B; manual_income a 3C; expenses/expense_categories/expense_files a 3D. Sin tablas de inventario, cronómetro, envíos, costeo o reportes.
+
+#### Pruebas previstas para 3A
+
+- Aritmética decimal: 0,125 → 0,13, líneas/subtotal/descuento general, límites, entradas >2 decimales rechazadas, cantidades fraccionarias/cero/negativas rechazadas. Adelanto y conversión: contrato unitario; integración real en 3B/3D.
+- Cotización: creación/edición/cancelación motivada, línea personalizada, snapshots ante cambio de catálogo, entidades inactivas solo para histórico Admin, línea desactivada conserva historia y deja de sumar; sin número consumido ni pago permitido.
+- Estados: matriz exhaustiva permitidos/denegados, cancelación por rol, retrocesos un paso y delivered_at; fixtures solo locales para estados posteriores, integraciones reales en 3B. Ninguna API de 3A permite eludir esa dependencia con una escritura de estado.
+- Fechas: hoy/histórico/futuro, límite de medianoche Costa Rica frente a UTC, entrega solicitada pasada/futura y anterior al pedido, created_at no falsificable. Correcciones y cronología cruzada con pagos se completan realmente en 3B.
+- Seguridad real: Admin/Colaborador/inactivo/anónimo en API/RLS, parámetros de actor/estado/totales manipulados, acceso a auditoría, FK/archivo ajeno o inexistente, tamaño/MIME/bytes y descarga después de inactivación. No registrar aprobaciones reales a partir de resultados con service_role que omitan RLS.
+- Concurrencia y UX: ediciones simultáneas sin pérdida silenciosa, rollback y auditoría consistentes, errores/red/reintentos, loading/vacío, accesibilidad y responsive 320/375/768/1024/1440.
+- Lint/typecheck/tests/build/E2E, verificación de secretos y regresión de Fases 1/2; revisión de grants/funciones/triggers/RLS/private no expuesto y Security Advisors después de aplicar el lote autorizado. Toda evidencia se documentará por tipo; no ejecutadas en esta actualización documental.
 
 ### Fase 4 — Producción y entregas
 

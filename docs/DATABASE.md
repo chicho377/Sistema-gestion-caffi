@@ -10,6 +10,7 @@ Decisiones aprobadas: [DECISIONS.md](DECISIONS.md). Este documento no constituye
 ## 1. Principios
 
 - PostgreSQL en Supabase.
+- Importes/precios numeric/decimal, nunca float, máximo 2 decimales; porcentajes máximo 2 decimales (D-19/D-20). Líneas redondeadas, subtotal de esas líneas y descuento general antes de total final. Cantidad vendida entera positiva. ROUND HALF UP a 2 decimales según D-21. No truncar tasas cambiarias ni reescribir historia.
 - UUID como identificadores internos.
 - `created_at` y `updated_at` en entidades principales.
 - Evitar borrado físico de información histórica/financiera.
@@ -103,22 +104,28 @@ Unique sugerido: `(product_id, material_id)`.
 Encabezado del pedido.
 
 - `id uuid PK`
-- `order_number text unique not null`
+- `order_number text unique nullable` — sin asignar durante Cotización; asignado atómicamente al confirmar y conservado después.
 - `client_id uuid FK not null`
 - `order_date date not null`
 - `requested_delivery_date date not null`
 - `production_status text not null`
-- `financial_status text not null`
+- `currency text` — CRC exclusivamente.
+- `financial_status` — dato derivado de consulta, **no columna mutable**; véase order_payment_summary.
 - `discount_amount numeric default 0`
 - `subtotal numeric default 0`
 - `total numeric not null`
-- `deposit_percentage numeric nullable`
-- `deposit_required_amount numeric` — monto originalmente solicitado, conservado históricamente.
+- `deposit_percentage_override numeric nullable` — propuesta técnica: excepción previa a confirmar, solo Admin auditado, máximo 2 decimales y 0..100.
+- `deposit_percentage_applied numeric nullable` — porcentaje fijado al confirmar, conservado históricamente, máximo 2 decimales y 0..100.
+- `deposit_required_amount numeric nullable` — calculado/persistido al confirmar, importe final a 2 decimales; no cambia por Configuración posterior.
 - `confirmed_at timestamptz nullable` — marca de confirmación de venta.
 - `delivered_at timestamptz nullable` — marca de entrega para ganancia realizada por período.
 - `notes text nullable`
 - `cancel_reason text nullable`
 - `cancelled_at timestamptz nullable`
+- `commercial_revision bigint` — versión técnica incrementada al cambiar líneas/cantidades/precios/descuentos.
+- `zero_total_authorized_revision bigint nullable`, `zero_total_authorized_by uuid FK profiles nullable`, `zero_total_authorized_at timestamptz nullable`, `zero_total_reason text nullable` — evidencia Admin de total cero vinculada a versión y auditoría; invalidada por cambio comercial.
+- `client_snapshot jsonb` — propuesta técnica: datos comerciales/contacto aplicados, con estructura validada; no reemplaza FK ni guarda datos de autorización.
+- `is_historical boolean`, `historical_recorded_by uuid FK profiles nullable` — marca de carga histórica autorizada; servidor valida Admin.
 - `created_by uuid FK -> profiles.id`
 - `created_at`
 - `updated_at`
@@ -138,17 +145,29 @@ Estados financieros:
 - `partially_paid`
 - `paid`
 
+Estado financiero independiente del productivo, derivado de total y pagos válidos: no_deposit si total > 0 y recibido = 0; partially_paid (Abonado) si 0 < recibido < total; paid si recibido >= total, incluido total cero autorizado sin pago cero. No sobrepagos: recibido <= total. Cumplimiento de adelanto es indicador separado por min(deposit_required_amount,total). No aceptar financial_status de formularios/API.
+
 Regla: la alerta de fecha no se almacena como dato permanente; se deriva de `requested_delivery_date` y estado.
 
 Reglas aprobadas y garantías técnicas:
 
-- `subtotal = SUM(quantity × unit_price - descuento de línea)`; `total = subtotal - discount_amount` del pedido. Cada descuento se aplica una sola vez.
-- Adelanto solicitado = total final × porcentaje / 100, conforme al redondeo por definir. Conservar el monto original; no regenerarlo silenciosamente al editar el pedido o la configuración.
+- `subtotal = SUM(redondear_2(quantity × unit_price - descuento de línea))`; `total = redondear_2(subtotal - discount_amount)` del pedido. Descuentos monetarios aplicados una sola vez, sin nuevos tipos.
+- Adelanto solicitado = redondear_2(total final × porcentaje / 100), ROUND HALF UP a 2 decimales según D-21. Capturar habitual vigente o excepción previa Admin, deposit_percentage_applied y deposit_required_amount al confirmar, atómicamente. No regenerarlos al cambiar Configuración o total. Umbral operativo = min(deposit_required_amount,total).
 - Totales y estado financiero deben mantenerse coherentes mediante operaciones de base de datos; no aceptar valores arbitrarios calculados únicamente por el cliente.
 - Suma de pagos válidos nunca mayor que el total en V1, incluso al editar líneas o descuentos y bajo concurrencia.
+- Confirmación con total cero solo Admin con motivo y auditoría, incluyendo cero tras redondeo. Cambios comerciales invalidan autorización anterior; si un confirmado permanece en cero, nueva autorización Admin debe formar parte de la misma transacción. Cotización cero no implica confirmación automática. No basta CHECK total>=0.
+- Cotización puede editarse dentro de validaciones/permisos. Tras confirmar, cambios de cantidades/precios/descuentos deben auditarse y recalcular saldo; bloquear pedido y coordinar con pagos para no reducir total por debajo de lo recibido válido.
+- Entregado bloquea modificaciones financieras normales del pedido, pero permite cobrar saldo sin reapertura. Entregado → Listo solo Admin con motivo/auditoría; otros retrocesos permitidos exclusivamente Admin/un paso: in_production → confirmed y ready → in_production, siempre motivo/actor/timestamp/auditoría before/after. Sin otros saltos hacia atrás. Matriz ordinaria secuencial de ARCHITECTURE.md; gate de adelanto en confirmed → in_production con override Admin motivado; ready → delivered sin exigir saldo cero.
 - Cancelación permitida con pagos; no cambia su validez ni su reconocimiento como ingresos. Motivo obligatorio y auditoría. Sin reembolsos en V1.
-- `confirmed_at` se registra al pasar de Cotización a Confirmado; `delivered_at` al entregar el pedido. La entrega del envío no asigna esta marca silenciosamente. Reaperturas y cambios históricos requieren la política pendiente en DECISIONS.md.
-- Consecutivo inicial `PED-AAAA-00001`, reinicio anual, asignación atómica en servidor/base de datos e identificador estable. Propuesta técnica: contador por año protegido por transacción, además de unicidad de `order_number`; nunca `MAX + 1` sin protección concurrente.
+- D-21: Colaborador solo cancela quote; cancelar confirmed/in_production/ready exige Admin. delivered no pasa directamente a cancelled: Admin reabre a ready y luego cancela, ambas acciones con motivo y auditoría. Retrocesos permitidos solo un paso y Admin activo, con timestamp/actor/before-after. Cancelado terminal.
+- `confirmed_at` al confirmar; `delivered_at` al entregar. Confirmado representa venta comprometida; Entregado base del resultado realizado; Cancelado queda fuera de ventas activas/resultado realizado, sin eliminar pagos. Created_at siempre instante real; históricos solo Admin. Corrección auditada de confirmed_at solo mismo año del número en operación normal; cambio de año bloqueado y reservado a excepción administrativa, sin renumeración automática. Cronología definitiva D-21 en sección 4. delivered_at solo existe si estado delivered; reapertura lo establece NULL, conserva anterior en auditoría; reentrega fija nueva fecha efectiva. Cobrar saldo no lo cambia.
+- Cliente editable en Cotización; después de confirmar solo Admin con motivo y sin pagos válidos. Cambio conserva cliente histórico de pagos anulados. Cancelado terminal; no reactivar ni aceptar pagos nuevos. Sin reembolsos ni borrado financiero.
+- Consecutivo inicial `PED-AAAA-00001`, anual, estable y asignado atómicamente en la confirmación. Cotización no consume número; un pedido cancelado que nunca se confirmó tampoco tuvo número asignado. Tras confirmar, conservarlo aun si se cancela. Históricos autorizados usan el año de confirmed_at en America/Costa_Rica, no el año técnico de created_at.
+- Propuesta técnica: contador anual protegido por transacción, unicidad de order_number y operación idempotente que no confirme/asigne dos veces; nunca MAX+1 sin protección concurrente. UUID interno no cambia y existe antes del consecutivo.
+
+### 2.6.1 order_counters — auxiliar técnico previsto
+
+Propuesta, no tabla creada: año de confirmación como clave y último consecutivo asignado. Incremento y asignación de orders.order_number en la misma transacción de confirmación; sin escritura directa por cliente y sin consumo en Cotización. No representa una entidad comercial nueva.
 
 ### 2.7 order_items
 
@@ -158,16 +177,20 @@ Detalle del pedido.
 - `order_id uuid FK not null`
 - `product_id uuid FK nullable`
 - `product_name_snapshot text not null`
-- `quantity numeric not null`
+- `quantity integer not null` — positiva; productos vendidos, no cantidades de material.
 - `unit_price numeric not null`
 - `discount_amount numeric default 0`
 - `line_total numeric not null`
 - `customization text nullable`
 - `notes text nullable`
+- `product_sku_snapshot text nullable`
+- `description_snapshot text nullable`
+- `is_active boolean not null`
+- `created_at`, `updated_at`
 
-Snapshot recomendado para conservar el nombre/precio histórico aunque el producto cambie.
+Snapshot comercial obligatorio para conservar nombre/precio/descuento/personalización aplicados, con SKU/descripcion cuando existan. Línea personalizada admite product_id NULL, nombre/cantidad/precio obligatorios y descripción opcional. Confirmar exige al menos una línea activa. Desactivar una línea conserva historia y recalcula totales con las mismas garantías de autorización, revisión y saldo. Sin borrado destructivo.
 
-`line_total = quantity × unit_price - discount_amount`. Un vínculo de sesión, consumo o costo a esta línea debe comprobar también pertenencia al mismo `order_id` (por ejemplo, mediante FK compuesta como solución técnica).
+`line_total = redondear_2(quantity × unit_price - discount_amount)`. Precios/importes máximo 2 decimales; precisión no permite descuentos mayores a la base ni totales negativos. Clientes/productos activos para nuevos registros normales; Admin admite inactivos en históricos, sin invalidar referencias existentes. Vínculo de gasto a línea valida mismo order_id mediante FK compuesta propuesta. No confundir líneas vendidas enteras con recetas de materiales decimales.
 
 ### 2.8 payments
 
@@ -178,6 +201,7 @@ Pagos aplicados a pedidos.
 - `client_id uuid FK not null`
 - `payment_date timestamptz not null`
 - `amount numeric not null`
+- `currency text not null` — CRC exclusivamente.
 - `payment_type text`
 - `payment_method text`
 - `reference text nullable`
@@ -204,7 +228,9 @@ Estados:
 
 Saldo del pedido = total - SUM(payments.amount WHERE status='valid').
 
-Fuente oficial de ingresos de pedidos. No genera fila adicional de ingreso. `payment_date` es la fecha efectiva de recepción. Garantizar que `client_id` corresponde al cliente del pedido. Registro y validación de saldo deben ser atómicos frente a pagos concurrentes. Solo Administrador puede anular; conservar motivo, actor y fecha. Pagos válidos de pedidos cancelados siguen contando como ingresos.
+D-20: amount > 0, numeric máximo 2 decimales, currency CRC. Alta Admin/Colaborador solo en confirmed/in_production/ready/delivered; cobro tras entrega sin reapertura. Quote/cancelled rechazan altas. Importe inmutable; corrección por anulación Admin motivada y nuevo pago que cumpla reglas de alta. No sobrepago concurrente ni DELETE físico. is_historical/actor histórico siguen autorización Admin; created_at real.
+
+Fuente oficial de ingresos de pedidos, sin segunda fila de ingreso. payment_date es fecha efectiva. client_id corresponde al pedido al registrar y mientras pago esté válido. Un pago anulado conserva ese cliente aunque Admin cambie después cliente del pedido sin pagos válidos; por ello no usar una FK compuesta mutable que obligue a reescribirlo. Mantener FK simple a clients y validación transaccional. Registro/anulación/cambio de cliente/total/cancelación coordinados mediante bloqueo del pedido. Solo Admin anula con motivo, actor y fecha. Pagos válidos de Cancelado siguen como ingresos.
 
 ### 2.9 manual_income
 
@@ -213,6 +239,7 @@ Dinero recibido que no proviene de pedidos. No contiene `order_id` ni `payment_i
 - `id uuid PK`
 - `income_date timestamptz not null` — fecha efectiva de recepción.
 - `amount numeric not null`
+- `currency text not null` — CRC exclusivamente.
 - `income_type text`
 - `payment_method text nullable`
 - `description text nullable`
@@ -232,6 +259,8 @@ Tipos iniciales:
 
 Las clasificaciones adelanto y pago final corresponden a pagos de pedidos. Los demás tipos solo se usan aquí cuando el ingreso no procede de un pedido. Correcciones conservan historial mediante anulación autorizada; no se concede gestión de ingresos manuales al Colaborador. No existe tabla `income` duplicando pagos. El reporte combina pagos válidos y `manual_income` válidos, identificando origen e ID.
 
+Importes numeric estrictamente positivos, máximo 2 decimales; currency CRC. Solo Admin crea/lee/corrige/anula; nunca DELETE. Históricos solo Admin, created_at real. Anulación conserva fila/actor/fecha/motivo. Registro de Fase 3; reporte agregado en fase posterior.
+
 ### 2.10 expense_categories
 
 - `id uuid PK`
@@ -249,6 +278,8 @@ Categorías iniciales:
 - comisiones bancarias
 - otros
 
+Administración exclusiva Admin. Colaborador lee las categorías necesarias para registrar sus gastos, sin crear/editar/desactivar categorías. Unicidad normalizada propuesta para evitar duplicados; conservar referencias al desactivar.
+
 ### 2.11 expenses
 
 - `id uuid PK`
@@ -256,11 +287,16 @@ Categorías iniciales:
 - `order_item_id uuid FK nullable` — costo atribuible a una línea del mismo pedido.
 - `category_id uuid FK not null`
 - `expense_date timestamptz not null`
-- `amount numeric not null`
+- `amount numeric not null` — monto original >0, máximo 2 decimales.
+- `currency text not null` — CRC o USD.
+- `exchange_rate_applied numeric nullable` — positiva y sin forzar escala 2, requerida en USD.
+- `exchange_rate_date date nullable`, `exchange_rate_source text nullable` — requeridas en USD.
+- `amount_crc numeric not null` — positivo, máximo 2 decimales; igual al original si CRC, conversión histórica si USD.
+- `rate_override_reason text nullable`, `rate_provided_by uuid FK profiles nullable` — tasa histórica proporcionada solo por Admin con motivo/auditoría.
 - `description text not null`
 - `payment_method text nullable`
 - `supplier text nullable`
-- `receipt_path text nullable`
+- `notes text nullable` — comprobantes mediante expense_files, no ruta arbitraria editable.
 - `status text default 'valid'`
 - `void_reason text nullable`
 - `voided_at timestamptz nullable`
@@ -269,6 +305,10 @@ Categorías iniciales:
 - `created_at`
 
 Reconocimiento por `expense_date`. Colaborador puede registrar el gasto y su monto, sin obtener acceso general a costos ni reportes financieros. Anulación reservada a Administrador. La vinculación con una línea no implica por sí sola que todo egreso sea un costo adicional: definir la relación con compras/consumos y envíos antes de sumar rentabilidad, evitando duplicaciones.
+
+D-20: usar tasa de fecha efectiva cuando exista; histórico sin tasa solo Admin aporta valor con motivo/auditoría. Nunca recalcular con exchange_rates vigente. Fallback conserva última tasa válida con fecha/procedencia reales; no presentarla como referencia de otra fecha. Colaborador lee únicamente gastos propios/comprobantes, y solo cambia descripción/notas/comprobante propios mientras status=valid. Resto de campos queda protegido; categorías, correcciones financieras y anulaciones solo Admin. Autor se deriva de identidad verificada y no es reasignable por cliente. Históricos solo Admin y created_at real.
+
+La FK opcional a order_items debe comprobar pertenencia a order_id. No calcula consumo, inventario ni rentabilidad. Mantener historial de vínculos al corregir/anular; no cascadas destructivas sobre gasto o pedido.
 
 ### 2.12 materials
 
@@ -415,6 +455,8 @@ Puede usarse para:
 - pedido;
 - gasto/comprobante.
 
+Para Fase 3 se propone concretamente order_files y expense_files con FKs tipadas a orders/expenses, en lugar de files polimórfico sin integridad. No mueve product_images ya implementado. Storage privado; comprobante hereda acceso de gasto padre (Admin o Colaborador autor del gasto), no permiso genérico por pedido. Ver esquema y matriz de sección 11.
+
 ### 2.18 settings
 
 Parámetros del negocio.
@@ -500,19 +542,40 @@ manual_income (sin pedido) + payments válidos ──> reporte seguro de ingreso
 
 Excepciones solo si existe una operación explícita y documentada.
 
+D-20: payments/manual_income/expenses.amount > 0; orders.total = 0 solo se confirma con autorización Admin, motivo y auditoría vigentes. Todos numeric/decimal; importes y precios máximo 2 decimales. Entrada debe validarse antes de cast/redondeo: propuesta técnica numeric sin escala coercitiva con CHECK de valor finito y escala monetaria <=2, más validación RPC/UI/API. Numeric(p,2) por sí solo podría redondear una entrada inválida. ROUND HALF UP final a 2 decimales según D-21; tasas de cambio conservan precisión y deben ser positivas/finitas.
+
 ### Cantidades
 
-`CHECK quantity > 0` para líneas y movimientos; permitir decimales. En pagos el campo es `amount`, no `quantity`; aceptación de monto cero pendiente.
+order_items.quantity entero positivo; RPC/UI/API rechazan fracciones antes de conversión a integer. Materiales, recetas y futuros movimientos conservan cantidades decimales positivas. En pagos amount, nunca quantity; cero prohibido.
 
 ### Adelanto
 
-`CHECK deposit_percentage BETWEEN 0 AND 100`.
+Porcentajes de override/aplicado entre 0 y 100, máximo 2 decimales.
 
-Descuentos no negativos ni superiores al importe correspondiente; totales no negativos. Monto de adelanto original conservado sin sobrescritura automática. Precisión y redondeo por definir antes de operaciones financieras.
+Descuentos monetarios no negativos ni superiores a su base; totales no negativos y cero confirmado solo autorizado según D-20. Adelanto fijado al confirmar y conservado; cumplimiento sobre min(histórico,total). Etapas aprobadas y finales con ROUND HALF UP a 2 decimales en servidor/BD, incluido adelanto y equivalente de conversión con tasa completa.
 
 ### Fechas
 
-No imponer que `requested_delivery_date >= order_date` sin confirmar la política con el usuario si se deben permitir registros históricos.
+Contrato definitivo D-21/C3-03, con día empresarial en America/Costa_Rica:
+
+| Campo | Invariante / autorización |
+|---|---|
+| created_at | Instante real del sistema, inmutable por cliente; no representa fecha histórica |
+| order_date | <= hoy; normal hoy; histórico solo Admin |
+| requested_delivery_date | >= order_date; única fecha comercial que admite futuro; puede ser pasada; sin comparación obligatoria con confirmed_at |
+| confirmed_at | <= instante actual; fecha local >= order_date; histórico/corrección histórica solo Admin; año del consecutivo estable |
+| payment_date | <= instante actual y >= confirmed_at; puede ser posterior a entrega; Colaborador fecha local de hoy; histórico solo Admin |
+| delivered_at | <= instante actual y >= confirmed_at; no NULL únicamente con production_status=delivered; histórico solo Admin |
+| income_date | <= instante actual; solo Admin registra manual_income, incluso histórico |
+| expense_date | <= instante actual; Colaborador fecha local de hoy, histórico solo Admin; no exigir >= confirmed_at; fecha efectiva determina referencia de tasa USD |
+
+Comparaciones entre timestamps preservan instantes; al comparar con order_date se convierte a fecha empresarial. Fechas efectivas anteriores al día empresarial actual exigen Admin, salvo timestamps internos generados automáticamente. Aplicar esa restricción al alta/cambio de fecha, no a una edición permitida de notas que conserve la fecha original. No aceptar futuros, excepto requested_delivery_date.
+
+Propuesta técnica: constraints para relaciones estructurales de la fila, triggers/RPC para reglas dependientes de reloj, perfil y otras tablas; mismo control en servidor. No tratar un CHECK con reloj como sustituto de validar cada operación. Corrección de confirmed_at revalida pagos válidos y entrega vigente, sin reescribir historia auditada; solo mismo año del número en operación normal, sin renumeración. Retornos a ready ponen delivered_at NULL dentro de la misma transacción que audita fecha anterior; nueva entrega asigna nueva fecha. Cobrar saldo de delivered no modifica esa columna.
+
+### Contrato decimal D-21
+
+redondear_2 en este documento significa exclusivamente ROUND HALF UP a 2 decimales. Ejemplo 1,00 × 12,50 % = 0,125 → 0,13. Líneas se redondean individualmente; subtotal suma líneas activas redondeadas; descuento general se aplica una sola vez antes del total final HALF UP. deposit_required_amount usa total final y porcentaje aplicado, HALF UP a 2. Conversión usa precisión decimal y tasa aplicada completa; solo equivalente monetario final se redondea. Validación de entrada ocurre antes de redondear: precios/importes/porcentajes con más de 2 decimales se rechazan. Implementación futura coherente entre servidor/BD, nunca solo float/JavaScript. No se alteran originales/tasas históricos ni se crean tipos nuevos de descuento.
 
 ### Estados
 
@@ -523,7 +586,7 @@ Preferir enums PostgreSQL o constraints/checks explícitos si el equipo desea es
 - `orders(client_id)`
 - `orders(requested_delivery_date)`
 - `orders(production_status)`
-- `orders(financial_status)`
+- No índice orders(financial_status): estado calculado, sin columna mutable. Optimizar suma con payments(order_id,status).
 - `payments(order_id, status)`
 - `payments(payment_date)`
 - `manual_income(income_date, status)`
@@ -591,7 +654,7 @@ Combina pagos válidos por `payment_date` e ingresos manuales válidos por `inco
 
 ### Períodos de negocio
 
-Agrupar en `America/Costa_Rica`, semana desde lunes. Ventas se confirman en `confirmed_at`; gastos se reconocen por `expense_date`. Ganancia realizada usa pedidos Entregados por `delivered_at`; estimada de pedidos activos separada. Tratamiento de ventas luego canceladas y reaperturas pendiente.
+Agrupar en America/Costa_Rica, semana desde lunes. Confirmado representa venta comprometida con confirmed_at; gastos por expense_date. Resultado realizado usa Entregados por delivered_at; Cancelado queda fuera de ventas activas/utilidad realizada, conservando pagos como ingresos. D-21: reapertura Entregado → Listo pone delivered_at NULL; auditoría conserva fecha anterior. Reentrega asigna nueva entrega vigente; cobro posterior no la altera. El modelo registra hechos, sin adelantar vistas de rentabilidad/reportes ni implementación actual.
 
 ### order_payment_summary
 
@@ -642,13 +705,13 @@ Costos y horas atribuibles mediante `order_item_id`, conservando `order_id`. No 
 
 ## 9. Decisiones aprobadas y pendientes
 
-Las 17 decisiones de DECISIONS.md ya están aprobadas; no volver a tratarlas como preguntas abiertas. Su sección de pendientes delimita valoración de inventario, costos comunes, redondeo/cambios históricos, numeración retroactiva, retención y respaldos. Alta de usuarios resuelta por D-17. Esos puntos se resuelven antes de implementar el comportamiento afectado. Reembolsos fuera de V1.
+D-01 a D-21 aprobadas; no reabrirlas. B3-01 a B3-10 y C3-01/C3-02/C3-03 resueltos, sin bloqueantes funcionales restantes de Fase 3. Reembolsos fuera de V1. Inventario/costeo y otros pendientes posteriores no bloquean estas tablas. No implementar hasta siguiente autorización.
 
 ## 10. Orden recomendado de migraciones
 
 Contrato de tipo de cambio aprobado (D-18 / RF-CON-06): en V1 se mantiene tipodecambio.paginasweb.cr, público y sin secretos adicionales. exchange_rates conserva referencias válidas ante fallos; puede actualizar la cotización del día y no representa una conversión histórica aplicada. Toda entidad histórica futura dependiente de conversión debe conservar importe, moneda y tasa aplicados originalmente, sin recalcular desde exchange_rates ni modificar historia al sustituir proveedor. No se crean esas entidades fuera de su fase autorizada.
 
-Este orden es planificación general. Fase 1 cerrada; autorizadas migraciones de Fase 2 para configuración, clientes, categorías, materiales, productos, relaciones, imágenes privadas y auditoría. No crear tablas de Fase 3 ni movimientos/stock real.
+Este orden es planificación general. Fases 1 y 2/auditoría cerradas y aprobadas para desarrollo; ahora solo se actualiza documentación. No crear migraciones/tablas/código de Fase 3 ni movimientos/stock real hasta autorización explícita.
 
 Concreción técnica de Fase 2: `settings` de fila única con RLS de Administrador; catálogo `materials` sin columnas financieras; costos/moneda en `material_costs` con RLS exclusiva de Administrador y FK al material. Ausencia de fila de costo significa pendiente, según D-18. Esta separación impide filtrar costos mediante SELECT *, filtros o respuestas de escritura. Monto original numeric sin redondeo persistido; equivalente CRC calculado con venta de referencia del BCCR publicada por tipodecambio.paginasweb.cr. `exchange_rates` conserva tasa, fecha del dato y de consulta; solo servidor escribe y Admin consulta. Ante fallo se conserva la última tasa, sin reemplazar el importe original ni afectar históricos. `product_images` especializa los metadatos de archivos con FK real a products. No se crea el modelo polimórfico de archivos de fases posteriores.
 
@@ -671,3 +734,67 @@ La sincronización de exchange_rates usa store_exchange_rate exclusivo de servic
 13. seed inicial autorizado.
 
 Cada tabla se incorpora junto con sus constraints, índices, privilegios y RLS; cada operación, con autorización y auditoría cuando corresponda. No posponer toda la seguridad hasta la última migración. FKs históricas deben impedir borrados destructivos.
+
+## 11. Tablas y relaciones previstas para Fase 3 — sin implementar
+
+| Tabla prevista | Función / relaciones principales |
+|---|---|
+| orders | Pedido y estado; client_id → clients, created_by → profiles; UUID desde creación y número al confirmar |
+| order_items | Líneas → orders; products opcional y snapshots obligatorios; quantity entera positiva |
+| payments | Pago → orders y clients coherentes; creadores/anuladores → profiles; fuente de ingresos de pedidos |
+| manual_income | Ingreso sin pedido ni pago asociado; autor/anulador → profiles; solo Admin |
+| expense_categories | Clasificación del gasto; mantenimiento solo Admin, lectura operativa |
+| expenses | Categoría obligatoria → expense_categories; pedido opcional → orders; línea opcional → order_items del mismo pedido; autor/anulador → profiles |
+| order_counters (auxiliar propuesto) | Consecutivo por año de confirmed_at, asignación exclusiva en transacción de confirmación |
+| order_files (auxiliar técnico propuesto) | Referencias privadas con FK order_id → orders; uploaded_by → profiles |
+| expense_files (auxiliar técnico propuesto) | Comprobantes privados con FK expense_id → expenses; uploaded_by → profiles; acceso heredado de gasto |
+
+Se reutilizan clients, products, profiles, settings, audit_log y exchange_rates; no se crean de nuevo. La tasa aplicada es una copia histórica en el registro convertido, no una lectura posterior de la caché mutable. Puede conservarse referencia adicional de procedencia sin sustituir dicha copia.
+
+No se prevén sales ni income duplicando orders/payments, projects, reembolsos ni entidades de inventario, cronómetro, envíos o reportes. Estados productivos quote/confirmed/in_production/ready/delivered/cancelled; financieros derivados no_deposit/partially_paid/paid, total cero autorizado → paid. Matriz definitiva D-21 en ARCHITECTURE.md, sin transiciones excepcionales implícitas.
+
+### 11.1 Campos principales consolidados y constraints
+
+Esquema propuesto vigente de Fase 3; complementa las secciones 2.6–2.11. No es migración ni autorización de código. Para entidades de Fase 2 prevalece el modelo implementado descrito en sección 10.
+
+| Tabla | Campos principales / garantías |
+|---|---|
+| orders | id UUID; order_number único nullable antes de confirmar; number_year y number_sequence como propuesta técnica para identidad estable; client_id FK y client_snapshot; order_date/requested_delivery_date; production_status; currency CRC; subtotal/discount_amount/total numeric; deposit_percentage_override/applied y deposit_required_amount; confirmed_at/delivered_at/cancelled_at/cancel_reason; commercial_revision y evidencia de autorización cero; notes; is_historical/historical_recorded_by; created_by/created_at/updated_at |
+| order_items | id/order_id/product_id opcional; product_name_snapshot/SKU/description; quantity integer >0; unit_price/discount_amount/line_total numeric; customization/notes/is_active/timestamps. UNIQUE(order_id,id) auxiliar para FK compuesta desde expenses. Sin cascadas destructivas |
+| payments | id/order_id/client_id histórico; amount >0/currency CRC; payment_date/type/method/reference/notes; status valid/voided; voided_by/at/reason; created_by/at y marca histórica. Importe inmutable; pagos válidos <= total en transacción |
+| manual_income | id/income_date/amount >0/currency CRC/income_type/payment_method/description; status valid/voided; actor/fecha/motivo de anulación, created_by/at y marca histórica; sin order_id/payment_id |
+| expense_categories | id/name/is_active/created_at/updated_at; unicidad normalizada propuesta y FK restrictiva desde gastos; mantenimiento Admin |
+| expenses | id/category_id/order_id opcional/order_item_id opcional del mismo pedido; expense_date; amount original >0/currency CRC o USD/amount_crc >0; exchange_rate_applied/date/source y evidencia Admin de tasa histórica; description/notes/payment_method/supplier; status valid/voided y evidencia anulación; created_by/at/updated_at y marca histórica |
+| order_counters | year PK y last_sequence; transacción de confirmación únicamente, no escrituras directas; incremento atómico, unicidad adicional de (number_year,number_sequence) |
+| order_files | id/order_id FK; bucket/object_path únicos; original_name/mime_type/byte_size; uploaded_by/created_at; is_active/replaced_by opcional para conservar versiones; sin URL pública persistida |
+| expense_files | id/expense_id FK; mismos metadatos de archivo/versionado; lectura por gasto padre, no por autor del archivo; modificaciones solo conforme permisos de comprobantes |
+
+Propuesta técnica: UUID PK, FKs a profiles para actores, CHECKs de estados/monedas/escala/finitud/signos, consistencia de tripleta de anulación y evidencia de total cero. No permitir editar total/line_total/snapshots derivados saltando la transacción. Revisión comercial invalida autorización cero incluso si no varía numéricamente el total. Configuración habitual se lee de forma autorizada en confirmación; no dar acceso a toda settings al Colaborador.
+
+Índices: todas las FKs; orders(client_id,order_date), production_status/requested_delivery_date, confirmed_at/delivered_at; payments(order_id,status), payment_date; expenses(created_by,expense_date), category_id/order_id/order_item_id; manual_income(income_date,status); rutas únicas y parent_id en archivos. Sin índice ni escritura de financial_status mutable. Totales financieros se calculan sobre filas válidas y líneas activas, con bloqueo común del pedido.
+
+### 11.2 Matriz de acceso y RLS de Fase 3
+
+Todos los permisos requieren perfil activo vigente. Anónimo/inactivo: ninguna operación ni descarga. RLS en cada tabla; privilegios mínimos independientes de las políticas. Admin tampoco puede violar integridad, borrar pagos/gastos/ingresos ni editar auditoría.
+
+| Recurso | Admin | Colaborador | Protección técnica propuesta |
+|---|---|---|---|
+| orders/order_items | Operación; retroceso un paso y cancelación de confirmados con motivo | Operación ordinaria; cancelación solo quote; sin retrocesos | Matriz D-21 y cronología; mutaciones RPC autorizadas/auditadas, sin DML que eluda cálculo; 3A no expone confirmación antes de 3B |
+| payments | Lectura/alta/anulación motivada | Lectura operativa por pedido/alta; sin anulación | Alta/anulación atómicas con pedido; importe inmutable; sin UPDATE/DELETE directos; no resumen global de ingresos |
+| manual_income | Lectura/alta/corrección/anulación | Sin acceso | RLS exclusiva Admin, sin proyecciones/RPC que lo filtren; nunca DELETE |
+| expenses | Lectura total/alta/corrección/anulación | Alta; SELECT solo created_by=auth.uid(); edición limitada propia activa | INSERT atribuido a actor; campos bloqueados vía RPC/validación OLD/NEW, RLS USING y WITH CHECK; no reasignación de autor |
+| expense_categories | Alta/edición/desactivación/lectura | Solo lectura necesaria para registrar gastos | Sin escritura de Colaborador; referencias históricas conservadas |
+| order_files | Acceso autorizado por pedido | Referencias de pedidos accesibles | Validación del padre y ruta; metadatos y Storage privados |
+| expense_files | Comprobantes de gastos | Solo de gastos propios; cambios si gasto activo | Predicado sobre expenses.created_by, no uploaded_by. Revalidar al descargar/cambiar. No filtrar gastos ajenos en joins |
+| order_counters | Sin edición directa | Sin edición directa | Operación interna en confirmación, no endpoint de asignación arbitraria |
+| audit_log | Lectura | Sin acceso | Escritura confiable transaccional, sin edición ordinaria |
+
+No autorizar todo UPDATE de una fila propia: RLS no restringe columnas. Propuesta de mutaciones mediante RPC específicas, campos admitidos explícitos y propiedad inmutable. Rutinas SECURITY DEFINER necesarias solo en private, search_path vacío, grants EXECUTE mínimos y comprobación de identidad/rol/estado; wrappers seguros según patrón de Fase 1/2. No confiar en user_metadata ni actor enviado por cliente. service_role no sustituye autorización. Resumen de pagos autorizado deriva estado/saldo/adelanto sin exponer manual_income/gastos ajenos. Vistas con seguridad del invocador y revisión de grants.
+
+### 11.3 Storage privado y evidencia de verificación futura
+
+Propuesta: buckets privados separados order-references y expense-receipts, FKs de metadatos y rutas únicas verificadas en servidor. Carga valida tamaño, MIME y bytes; no confiar en extensión. Cliente no obtiene permisos generales de upload/overwrite/delete. Descarga mediante endpoint autenticado que revalida perfil y acceso al padre usando JWT/RLS, sin caché compartida. Mantiene el patrón de Fase 2 y evita una URL firmada persistente que sobreviva a la inactivación del usuario. Políticas sobre storage.objects también deben impedir lectura por ruta adivinada.
+
+Reemplazar comprobante conserva archivo y metadatos previos y audita la nueva versión; no borrar ni sobrescribir. Colaborador solo actúa en gasto propio activo, aunque otro actor haya subido una versión. Operación servidor vuelve a comprobar padre/estado al registrar metadatos; fallo de subida/registro no habilita borrado automático compensatorio. Objetos incompletos no son legibles sin vínculo autorizado.
+
+Pruebas previstas, no ejecutadas ahora: Admin/Colaborador propio/ajeno/inactivo/anónimo; lecturas y escrituras API directas; falsificación de created_by; cambios prohibidos en gasto propio; anulación por Colaborador; lectura manual_income; sobrepagos concurrentes; gastos con línea de otro pedido; URL/ruta de comprobante ajeno; acceso tras inactivación; revisión de grants, funciones, triggers, private no expuesto y Security Advisors. Diseño contrastado con documentación oficial de [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security) y [Storage](https://supabase.com/docs/guides/storage/security/access-control); no constituye validación remota.
