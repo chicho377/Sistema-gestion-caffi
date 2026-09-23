@@ -154,7 +154,7 @@ No bloquean la base técnica; sí deben resolverse antes de implementar el compo
 
 ## Estado de implementación
 
-Fases 1 y 2 cerradas y aprobadas para desarrollo; auditoría de Fase 2 confirmada en commit 272bd0d. D-19/D-20/D-21 solo preparan documentación de Fase 3. No se autoriza aún su código/migraciones. Dashboard permanece como shell. AGENTS.md y reference permanecen intactos.
+Fases 1 y 2 cerradas y aprobadas para desarrollo; auditoría de Fase 2 confirmada en commit 272bd0d. D-19/D-20/D-21 quedaron documentadas en f0dfc9b. Una autorización posterior permite exclusivamente 3A; 3B y siguientes siguen pendientes de autorización. Dashboard permanece como shell. AGENTS.md y reference permanecen intactos. Las prohibiciones de implementación consignadas en las entregas documentales siguientes describen su alcance histórico, sustituido únicamente para 3A por esa autorización.
 
 ## Seguimiento de B3-01 a B3-10
 
@@ -259,3 +259,14 @@ El resto concreta pendientes: HALF UP conserva D-05, la entrega vigente implemen
 Plan aprobado: 3A Pedidos/líneas/cotizaciones/estados; 3B Confirmación/consecutivos/adelantos/pagos; 3C Ingresos manuales; 3D Gastos/categorías/comprobantes; 3E Validación integral/permisos/auditoría/pruebas reales.
 
 3A define el contrato de todos los estados, pero la confirmación operativa depende de la transacción de 3B. Hasta completar 3B no se habilita confirmar ni se permite escribir estados posteriores eludiendo consecutivo/adelanto/pagos. Pruebas de estados posteriores pueden utilizar fixtures locales aislados, identificados como simulados; nunca pedidos confirmados ficticios en DEV. Esta secuencia es una dependencia de implementación, no un bloqueo funcional ni una reducción del alcance final aprobado.
+
+
+### Autorización posterior: implementación exclusiva de 3A
+
+El usuario aprobó D-20/D-21 y autorizó 3A después del cierre documental f0dfc9b. No se alteran decisiones D-01 a D-21 ni se habilita 3B. Quote puede persistir provisionalmente sin líneas y con total cero; la validación de confirmación permanece para 3B. Cancelación quote → cancelled disponible a ambos roles activos, con motivo y terminalidad.
+
+Decisiones técnicas implementadas: RPC transaccional con bloqueo y revisión optimista; importes numeric y transporte textual; vistas security_invoker; búsqueda cliente histórico/observaciones, filtro de estado y paginación; referencias de imágenes reutilizando validación de Fase 2 (5 MB, 25 MP, JPEG/PNG/WebP, sin animación, recodificación WebP), versionado sin borrado y descarga privada sin caché compartida. Archivos sin vínculo tras fallo de registro permanecen privados para revisión, nunca se borran automáticamente.
+
+La verificación real detectó que usar 40001 para un conflicto de revisión provocaba reintentos automáticos de PostgREST. Se aplicó una migración adicional con PT409/HTTP 409; misma integridad, permisos y rechazo de edición obsoleta. Es una corrección técnica, no una nueva decisión funcional. Documentación oficial: https://supabase.com/docs/guides/troubleshooting/high-cpu-and-infinite-transaction-retries-when-using-custom-error-codes-in-rpc-functions-77326b
+
+Estado/evidencia en PHASE3A_VERIFICATION.md. No se implementan confirmación, consecutivos, adelantos, pagos, ingresos manuales, gastos ni fases posteriores.

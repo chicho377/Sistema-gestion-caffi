@@ -2,6 +2,8 @@
 
 # Modelo de datos propuesto para Supabase
 
+Estado actual: Fases 1/2 implementadas; 3A implementada en DEV. La sección 12 distingue el esquema vigente de las propuestas para 3B–3E.
+
 > Este documento es una propuesta de implementación derivada de los requerimientos aprobados.  
 > Los nombres físicos pueden ajustarse durante las migraciones, pero no deben perderse las responsabilidades, relaciones ni reglas de negocio descritas aquí.
 
@@ -735,7 +737,7 @@ La sincronización de exchange_rates usa store_exchange_rate exclusivo de servic
 
 Cada tabla se incorpora junto con sus constraints, índices, privilegios y RLS; cada operación, con autorización y auditoría cuando corresponda. No posponer toda la seguridad hasta la última migración. FKs históricas deben impedir borrados destructivos.
 
-## 11. Tablas y relaciones previstas para Fase 3 — sin implementar
+## 11. Tablas y relaciones de Fase 3 — modelo completo
 
 | Tabla prevista | Función / relaciones principales |
 |---|---|
@@ -755,7 +757,7 @@ No se prevén sales ni income duplicando orders/payments, projects, reembolsos n
 
 ### 11.1 Campos principales consolidados y constraints
 
-Esquema propuesto vigente de Fase 3; complementa las secciones 2.6–2.11. No es migración ni autorización de código. Para entidades de Fase 2 prevalece el modelo implementado descrito en sección 10.
+Esquema objetivo de Fase 3; complementa las secciones 2.6–2.11. No autoriza subfases adicionales. Para entidades de Fase 2 prevalece el modelo implementado descrito en sección 10; para 3A prevalece el esquema efectivamente implementado en sección 12. Campos de confirmación/finanzas que no figuren allí siguen propuestos para subfases futuras.
 
 | Tabla | Campos principales / garantías |
 |---|---|
@@ -798,3 +800,32 @@ Propuesta: buckets privados separados order-references y expense-receipts, FKs d
 Reemplazar comprobante conserva archivo y metadatos previos y audita la nueva versión; no borrar ni sobrescribir. Colaborador solo actúa en gasto propio activo, aunque otro actor haya subido una versión. Operación servidor vuelve a comprobar padre/estado al registrar metadatos; fallo de subida/registro no habilita borrado automático compensatorio. Objetos incompletos no son legibles sin vínculo autorizado.
 
 Pruebas previstas, no ejecutadas ahora: Admin/Colaborador propio/ajeno/inactivo/anónimo; lecturas y escrituras API directas; falsificación de created_by; cambios prohibidos en gasto propio; anulación por Colaborador; lectura manual_income; sobrepagos concurrentes; gastos con línea de otro pedido; URL/ruta de comprobante ajeno; acceso tras inactivación; revisión de grants, funciones, triggers, private no expuesto y Security Advisors. Diseño contrastado con documentación oficial de [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security) y [Storage](https://supabase.com/docs/guides/storage/security/access-control); no constituye validación remota.
+
+
+## 12. Esquema implementado de Fase 3A
+
+Migraciones: 20260923055811_phase3a_quotes.sql y 20260923110205_phase3a_conflict_response.sql. Aplicadas únicamente a SIGCA DEV pysgfnwsycgoneaecgcl. Sin alterar migraciones aplicadas de Fases 1/2.
+
+| Objeto | Modelo vigente de 3A |
+|---|---|
+| orders | UUID; client_id FK restrictiva y client_snapshot nombre/teléfono/correo; order_date/requested_delivery_date; production_status solo quote/cancelled; moneda CRC; subtotal/discount_amount/total; notes; revision; created_by/updated_by/cancelled_by; timestamps y cancel_reason. order_number/confirmed_at/delivered_at y autorización de cero reservados pero obligatoriamente NULL. Sin columnas de adelanto, pagos, estado financiero mutable ni consecutivo. |
+| order_items | UUID, order_id FK restrictiva; product_id nullable; SKU/nombre/descripción snapshot; quantity integer positivo; unit_price/discount_amount/line_total; customization/notes/is_active; timestamps; UNIQUE(order_id,id). La omisión de una línea guardada se rechaza: desactivar explícitamente. |
+| order_files | UUID, order_id FK restrictiva, path único, caption, mime_type webp, byte_size, uploaded_by, is_active, replaces_id FK restrictiva, timestamps. Bucket fijo order-references, sin nombre original o URL pública persistida. |
+| quote_money | Dominio numeric no negativo, finito y escala <=2; rechaza NaN/Infinity. Sin float ni redondeo silencioso de entrada. |
+| quotes_read / quote_items_read | Vistas security_invoker que transportan importes como texto exacto, con RLS subyacente. |
+| quote_products_read | Proyección comercial del catálogo; precio como texto, sin costos/materiales/márgenes. |
+
+CHECKs mantienen coherencia de totales, cantidades, moneda, fechas relativas, estado y tripleta de cancelación. RPC valida fecha no futura y permiso histórico con America/Costa_Rica. FKs de actores, cliente, producto, pedido y versión anterior con índices y ON DELETE RESTRICT. Índices adicionales de entrega/estado y creación. revision es control técnico de edición concurrente; no habilita la autorización financiera de cero de 3B.
+
+RLS orders_read/order_items_read/order_files_read: SELECT authenticated con private.is_active(). Grants de tablas: únicamente SELECT authenticated; ni anon ni service_role tienen DML directo sobre estas tablas. No policies INSERT/UPDATE/DELETE generales. Cada mutación se hace por una función autorizada:
+
+- public.save_quote → private.save_quote: wrapper invoker, implementación definer con search_path vacío, EXECUTE authenticated. Identidad desde auth.uid(), bloqueo de perfil/pedido, revisión optimista y recálculo numeric dentro de la misma transacción. Snapshots de catálogo se toman de BD y se conservan al editar. Rechaza columnas de totales/estado/actores suministradas por cliente y líneas de otro pedido.
+- public.cancel_quote → private.cancel_quote: mismo patrón, motivo obligatorio, actor/fecha confiables y terminalidad. Revisión obsoleta/estado cambiado devuelve PT409 (HTTP 409), no 40001, para evitar reintentos de serialización de PostgREST.
+- public.register_order_file → private.register_order_file: EXECUTE exclusivo service_role, usado solo tras autorización y validación de bytes en servidor. Revalida actor activo y padre quote bajo bloqueo; verifica objeto, ruta y versión del mismo pedido. No admite actor desde formularios del navegador.
+- private.quote_input_money: validador interno sin EXECUTE para roles de aplicación. Importe textual de hasta 100 caracteres; cantidad dentro del rango positivo integer de PostgreSQL. Límites técnicos, no reglas financieras nuevas.
+
+Trigger quote_audit AFTER INSERT/UPDATE en las tres tablas reutiliza private.audit_catalog con before/after. quote.cancelled añade motivo y actor; quote.file_registered atribuye explícitamente al actor de la carga de servidor. Sin contraseñas, tokens o binarios en auditoría. Colaborador no lee audit_log.
+
+Storage: bucket privado order-references, 5 MiB, image/webp. Policy order_references_read permite SELECT a usuario activo solo si existe order_files con esa ruta, protegido por RLS. Las versiones previas mantienen acceso autorizado. Sin policies de carga/sobrescritura/borrado para authenticated. La descarga usa JWT del usuario mediante /api/order-file/[id], vuelve a validar acceso y devuelve Cache-Control: private, no-store. Un objeto subido sin registro asociado queda inaccesible al cliente; requiere revisión administrativa, sin DELETE automático.
+
+La sección 11 sigue definiendo el modelo objetivo de subfases posteriores, no objetos existentes. No hay order_counters, payments, manual_income, expenses ni expense_files de Fase 3 en este lote. Ver evidencia en PHASE3A_VERIFICATION.md.

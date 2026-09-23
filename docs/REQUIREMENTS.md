@@ -625,7 +625,7 @@ Ganancia por hora aproximada: ₡1.230,77
 
 ## 12. Resultado esperado
 
-La preparación documental de Fase 3 incorpora D-19/D-20/D-21 sin autorizar código/migraciones. B3-01 a B3-10 y C3-01 a C3-03 están resueltos; no se identifican bloqueantes funcionales restantes para Fase 3. Requiere siguiente autorización expresa antes de implementar. No se adelantan fases posteriores.
+La preparación documental D-19/D-20/D-21 quedó confirmada en f0dfc9b; B3-01 a B3-10 y C3-01 a C3-03 están resueltos. La autorización posterior permite únicamente 3A: Cotización, líneas, snapshots, importes, fechas, alertas, imágenes privadas y cancelación motivada terminal. Una Cotización puede guardarse sin líneas y con total cero; la autorización de cero y el requisito de línea activa se aplicarán al confirmar en 3B. No existen pagos cero ni confirmación parcial en 3A. Referencias: JPEG/PNG/WebP de hasta 5 MB y 25 megapíxeles, sin animación, recodificadas y privadas; versiones previas conservadas. Búsqueda por cliente histórico/observaciones y filtros Cotización/Cancelado/Todos. La matriz de verificación real está en PHASE3A_VERIFICATION.md. Subfases 3B y siguientes requieren autorización expresa.
 
 Una sola aplicación web segura y 100 % responsive, con misma capacidad funcional desde celular, tablet y computadora, autenticación, recuperación por correo, datos centralizados en Supabase y despliegue en Vercel.
 

@@ -5,7 +5,7 @@
 > Este documento traduce los requerimientos aprobados a una estructura técnica para Codex.  
 > Las decisiones de Next.js, TypeScript y Tailwind CSS forman parte del paquete de implementación acordado; Supabase y Vercel provienen directamente de los requerimientos funcionales.
 
-Las decisiones aprobadas de V1 se registran en [DECISIONS.md](DECISIONS.md). Fases 1 y 2 y auditoría de Fase 2 aprobadas para desarrollo (checkpoint 272bd0d). D-19/D-20/D-21 autorizan únicamente preparación documental de Fase 3; su código y migraciones requieren nueva autorización.
+Las decisiones aprobadas de V1 se registran en [DECISIONS.md](DECISIONS.md). Fases 1 y 2 y auditoría de Fase 2 aprobadas para desarrollo (checkpoint 272bd0d). D-19/D-20/D-21 quedaron documentadas en f0dfc9b. La autorización posterior permite únicamente implementar 3A; 3B y siguientes requieren aprobación independiente.
 
 ## 1. Objetivos arquitectónicos
 
@@ -353,7 +353,7 @@ Contrato aprobado de conversión (D-18 / RF-CON-06): el proveedor público V1 ac
 
 Pedidos, líneas, descuentos, adelanto histórico, consecutivo, alertas, estados y marcas de confirmación/entrega. Pagos, ingresos manuales, gastos y anulaciones autorizadas. Validación concurrente de saldo y auditoría.
 
-**Preparación documental, sin implementación autorizada todavía.** Aplicar D-19/D-20/D-21; C3-01 a C3-03 resueltos, sin bloqueantes funcionales restantes. Modelo: orders, order_items, payments, manual_income, expense_categories y expenses; order_counters, order_files y expense_files como auxiliares técnicos propuestos. Reutilizar clients, products, profiles, settings, audit_log y exchange_rates. Sin sales ni ingresos duplicados de payments.
+**Implementación autorizada únicamente para 3A.** Aplicar D-19/D-20/D-21; C3-01 a C3-03 resueltos, sin bloqueantes funcionales restantes. Implementados orders, order_items y order_files para Cotización/Cancelado; payments, manual_income, expense_categories, expenses, order_counters y expense_files siguen previstos para sus subfases. Reutilizar clients, products, profiles, settings, audit_log y exchange_rates. Sin sales ni ingresos duplicados de payments.
 
 Confirmar/modificar/cobrar/anular/cancelar/reabrir deben hacer autorización por perfil vigente, validación, bloqueo de filas relevantes, cambios derivados y auditoría en una transacción. No usar UI como única barrera ni service_role como sustituto de permiso. RPCs especializadas controlan columnas, estados, propietario inmutable y consistencia de la suma de pagos. Toda operación de pago y edición/cancelación del pedido comparte bloqueo del pedido para evitar carreras. Lectura propia de gastos definida por D-20, no por ocultar campos del listado global.
 
@@ -403,7 +403,7 @@ Fuentes técnicas revisadas: [RLS y grants](https://supabase.com/docs/guides/dat
 4. **3D — Gastos, categorías y comprobantes.** Categorías Admin, CRC/USD con tasa histórica, acceso propio de Colaborador, edición limitada, anulaciones y comprobantes privados versionados.
 5. **3E — Validación integral, permisos, auditoría y pruebas reales.** Recorridos integrados y concurrencia; Admin/Colaborador/inactivo/anónimo, API/RLS/Storage reales, auditoría y Security Advisors; responsive 320/375/768/1024/1440; lint/typecheck/tests/build/E2E; evidencia local/simulada/real separada. No diferir la seguridad inicial hasta 3E.
 
-Cada lote futuro incluye pruebas locales y revisión de migración; antes de remoto: comprobar DEV conectado, comparar historial, db push --dry-run, revisar alcance, aplicar solo lote autorizado y validar RLS real/Advisors. No reset, DROP, TRUNCATE ni borrados compensatorios. No declarar pruebas reales si solo hubo simulación. Plan sin autorización actual ni avance a Fase 4.
+Cada lote incluye pruebas locales y revisión de migración; antes de remoto: comprobar DEV conectado, comparar historial, db push --dry-run, revisar alcance, aplicar solo lote autorizado y validar RLS real/Advisors. No reset, DROP, TRUNCATE ni borrados compensatorios. No declarar pruebas reales si solo hubo simulación. Autorización vigente limitada a 3A; sin avance a 3B ni Fase 4.
 
 #### Plan técnico detallado de 3A
 
@@ -416,11 +416,15 @@ Cada lote futuro incluye pruebas locales y revisión de migración; antes de rem
 
 Dependencia explícita: 3A no puede validar confirmación/ciclo completo contra datos reales sin 3B. Se entregará verificable como cotizaciones y contrato de estados; los recorridos con pagos/consecutivos serán pruebas de integración de 3B y 3E. Esto no cambia reglas funcionales ni las simula en producción.
 
-#### Migraciones previstas para 3A (solo planificación)
+#### Migraciones y persistencia de 3A
 
 - **Pedido y líneas:** orders/order_items, constraints/índices/FKs, validadores decimales/cronología, transacciones de Cotización, RLS/grants y triggers de auditoría. Estados definidos, escrituras directas a estados posteriores bloqueadas hasta operaciones completas de 3B.
 - **Referencias privadas:** order_files y bucket/políticas para archivos de pedido, coherencia de metadatos/objeto, autorización por pedido y perfil activo, auditoría de cambios/versiones.
-- No generar archivos SQL ahora ni inventar timestamps de migración. order_counters/payments y confirmación pertenecen a 3B; manual_income a 3C; expenses/expense_categories/expense_files a 3D. Sin tablas de inventario, cronómetro, envíos, costeo o reportes.
+- Aplicadas `20260923055811_phase3a_quotes.sql` y `20260923110205_phase3a_conflict_response.sql` solo en SIGCA DEV. La segunda corrige la respuesta de revisión desactualizada a PT409/HTTP 409, sin alterar la migración anterior ni datos. order_counters/payments y confirmación pertenecen a 3B; manual_income a 3C; expenses/expense_categories/expense_files a 3D. Sin tablas de inventario, cronómetro, envíos, costeo o reportes.
+
+Implementación: listado `/pedidos` con búsqueda por nombre histórico del cliente u observaciones, filtro Cotización/Cancelado/Todos y páginas de 25; `/pedidos/nuevo` y `/pedidos/[id]` para alta/detalle/edición. Opciones, líneas y referencias se leen por páginas para no truncar datos al límite de Data API. RPC save_quote/cancel_quote bloquean perfil/pedido, validan revisión y realizan cambios/auditoría en una transacción. Dinero como texto en JSON y bigint en vista previa; PostgreSQL numeric es autoritativo. No hay entrada ni escritura directa de totales.
+
+Referencias JPEG/PNG/WebP hasta 5 MB y 25 megapíxeles, sin animación; validación de bytes y recodificación WebP reutilizada de Fase 2. Bucket privado order-references, rutas UUID, registro exclusivo de servidor y descarga autenticada sin caché compartida. Reemplazos conservan metadatos y objetos anteriores. Si falla el registro tras subir, el objeto queda privado sin vínculo y requiere revisión administrativa; no se elimina automáticamente. Evidencia y límites en [PHASE3A_VERIFICATION.md](PHASE3A_VERIFICATION.md).
 
 #### Pruebas previstas para 3A
 
@@ -430,7 +434,7 @@ Dependencia explícita: 3A no puede validar confirmación/ciclo completo contra 
 - Fechas: hoy/histórico/futuro, límite de medianoche Costa Rica frente a UTC, entrega solicitada pasada/futura y anterior al pedido, created_at no falsificable. Correcciones y cronología cruzada con pagos se completan realmente en 3B.
 - Seguridad real: Admin/Colaborador/inactivo/anónimo en API/RLS, parámetros de actor/estado/totales manipulados, acceso a auditoría, FK/archivo ajeno o inexistente, tamaño/MIME/bytes y descarga después de inactivación. No registrar aprobaciones reales a partir de resultados con service_role que omitan RLS.
 - Concurrencia y UX: ediciones simultáneas sin pérdida silenciosa, rollback y auditoría consistentes, errores/red/reintentos, loading/vacío, accesibilidad y responsive 320/375/768/1024/1440.
-- Lint/typecheck/tests/build/E2E, verificación de secretos y regresión de Fases 1/2; revisión de grants/funciones/triggers/RLS/private no expuesto y Security Advisors después de aplicar el lote autorizado. Toda evidencia se documentará por tipo; no ejecutadas en esta actualización documental.
+- Lint/typecheck/tests/build/E2E, verificación de secretos y regresión de Fases 1/2; revisión de grants/funciones/triggers/RLS/private no expuesto y Security Advisors después de aplicar el lote autorizado. Evidencia ejecutada de 3A por tipo en PHASE3A_VERIFICATION.md; pruebas de subfases posteriores continúan pendientes y fuera del alcance actual.
 
 ### Fase 4 — Producción y entregas
 

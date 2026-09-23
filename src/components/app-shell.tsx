@@ -81,7 +81,6 @@ export function AppShell({
         Inicio
       </Link>
       {[
-        [ClipboardList, "Pedidos"],
         [Timer, "Tiempo"],
         [Truck, "Envíos"],
       ].map(([Icon, label]) => {
@@ -99,6 +98,7 @@ export function AppShell({
         );
       })}
       {[
+        [ClipboardList, "Pedidos", "/pedidos"],
         [UsersRound, "Clientes", "/clientes"],
         [Package, "Productos", "/productos"],
         [Layers, "Materiales", "/materiales"],
@@ -235,10 +235,10 @@ export function AppShell({
           <House size={22} />
           Inicio
         </Link>
-        <span aria-disabled="true" title="Disponible en una fase posterior">
+        <Link href="/pedidos" aria-current={path.startsWith("/pedidos") ? "page" : undefined}>
           <ClipboardList size={22} />
           Pedidos
-        </span>
+        </Link>
         <Link
           href="/clientes"
           aria-current={path.startsWith("/clientes") ? "page" : undefined}

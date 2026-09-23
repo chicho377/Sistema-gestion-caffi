@@ -1,0 +1,7 @@
+select jsonb_build_object(
+'columns',(select md5(string_agg(table_name||'.'||column_name||':'||data_type||':'||udt_name||':'||is_nullable||':'||coalesce(column_default,''),E'\n' order by table_name,ordinal_position)) from information_schema.columns where table_schema='public' and table_name in ('orders','order_items','order_files','quotes_read','quote_items_read','quote_products_read')),
+'constraints',(select md5(string_agg(c.conname||':'||pg_get_constraintdef(c.oid),E'\n' order by c.conname)) from pg_constraint c where c.contype<>'n' and (c.conrelid in ('public.orders'::regclass,'public.order_items'::regclass,'public.order_files'::regclass) or c.contypid='public.quote_money'::regtype)),
+'functions',(select md5(string_agg(pg_get_functiondef(p.oid),E'\n' order by n.nspname,p.proname)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','private') and p.proname in ('save_quote','cancel_quote','register_order_file','quote_input_money')),
+'policies',(select md5(string_agg(policyname||':'||cmd||':'||coalesce(qual,'')||':'||coalesce(with_check,''),E'\n' order by policyname)) from pg_policies where tablename in ('orders','order_items','order_files') or policyname='order_references_read'),
+'indexes',(select md5(string_agg(indexdef,E'\n' order by indexname)) from pg_indexes where schemaname='public' and tablename in ('orders','order_items','order_files'))
+) as fingerprint;

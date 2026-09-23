@@ -1,6 +1,6 @@
-# SIGCA — Configuración y catálogos (Fase 2)
+# SIGCA — Pedidos y cotizaciones (Fase 3A)
 
-Aplicación privada para caffi crochet. Fase 1 aprobada para desarrollo. Fase 2 incorpora configuración, clientes, categorías, materiales y productos, con imágenes privadas y permisos por rol. El Dashboard conserva su shell sin métricas ficticias; no se implementan pedidos, gastos, movimientos de inventario ni funciones de Fase 3. La fuente funcional sigue siendo `AGENTS.md` y `/docs`; `/reference` se conserva intacto.
+Aplicación privada para caffi crochet. Fases 1 y 2 aprobadas para desarrollo. Fase 3A incorpora pedidos en Cotización, líneas, snapshots, fechas, alertas, referencias privadas y cancelación motivada. El Dashboard conserva su shell sin métricas ficticias. Confirmación, consecutivos, adelantos, pagos y demás subfases siguen deshabilitados. La fuente funcional sigue siendo `AGENTS.md` y `/docs`; `/reference` se conserva intacto.
 
 ## Requisitos y ejecución local
 
@@ -258,7 +258,7 @@ node tests/phase2-real.mjs
 
 La prueba real crea registros identificados con VERIFICACION-F2 y los desactiva al finalizar; conserva costos, archivos e historial. No crea usuarios ni cambia contraseñas; usa sesiones aisladas de las cuentas autorizadas. Inactiva temporalmente al Colaborador y restaura su estado. No ejecutar sobre cuentas en operación sin coordinar esa prueba.
 
-No se avanza a Fase 3. Los pendientes funcionales de fases futuras permanecen en `docs/DECISIONS.md`.
+Este cierre de Fase 2 precede a la autorización posterior de 3A. Los pendientes funcionales de fases futuras permanecen en `docs/DECISIONS.md`.
 
 Auditoría de completitud (22/09/2026): [matriz de 187 criterios e inventario efectivo](docs/PHASE2_VERIFICATION.md#matriz-requisito-por-requisito), respaldada por [metadatos reales del esquema](docs/PHASE2_SCHEMA_AUDIT.json). La migración adicional `20260923003133_phase2_audit_validation.sql` alinea el rechazo de espacios de control en correos entre servidor y BD; probada y aplicada únicamente en DEV tras dry-run. No elimina ni transforma datos.
 
@@ -267,3 +267,21 @@ Resultado actualizado: lint/typecheck/build correctos, 12 pruebas locales, 14 E2
 El tipo de cambio es alcance aprobado. V1 conserva el proveedor público actual y la última tasa válida; no requiere secretos nuevos. Las futuras operaciones históricas guardarán la tasa aplicada, importe y moneda originales y no se recalcularán al cambiar tasas/proveedor; esas operaciones no se implementan en Fase 2.
 
 La auditoría añade también `20260923004701_phase2_phone_validation.sql`: rechaza teléfonos formados solo por signos, igual que la validación de servidor corregida. Probada localmente, dry-run exclusivo y verificación SQL/API/UI en DEV; sin transformar ni borrar datos. Las cinco migraciones locales/remotas coinciden (una Fase 1 y cuatro Fase 2).
+
+
+## Fase 3A — Pedidos, líneas y cotizaciones
+
+Checkpoint documental previo: f0dfc9b. Implementación exclusiva de 3A; D-19/D-20/D-21 vigentes. Entrada desde Pedidos: crear cotización, seleccionar cliente, agregar líneas de catálogo o personalizadas, modificar fechas/precios/descuentos/notas, guardar y adjuntar imágenes privadas. Admin y Colaborador activos pueden operar cotizaciones; solo Admin puede registrar fecha histórica. Cancelar requiere motivo y conserva todo el historial.
+
+No existe Confirmar pedido ni número PED asignado. Totales en CRC, calculados en PostgreSQL; vista previa decimal exacta. Las cotizaciones pueden guardarse vacías, sin consumir consecutivos o adelantos. Referencias JPEG/PNG/WebP: hasta 5 MB y 25 MP, sin animación; reemplazar conserva la versión anterior.
+
+Migraciones nuevas, ya aplicadas solo a DEV pysgfnwsycgoneaecgcl:
+
+- 20260923055811_phase3a_quotes.sql: orders/order_items/order_files, RPC, RLS, auditoría y bucket privado.
+- 20260923110205_phase3a_conflict_response.sql: conflictos de edición PT409, sin reintentos de serialización y sin cambios de datos.
+
+No requiere nuevas dependencias ni variables de entorno. Para otra base autorizada: revisar historial, probar localmente, ejecutar db push --dry-run y aplicar únicamente el lote revisado. No reset ni edición de migraciones aplicadas.
+
+Validación reproducible: npm run lint, npm run typecheck, npm test, npm run build, npm run test:e2e, npm audit --omit=dev. Los E2E usan fixture simulado; no equivalen a Supabase real. El script tests/phase3a-real.mjs requiere servidor local de producción con .env.local de DEV, SIGCA_REAL_TESTS=1, SIGCA_TEST_ADMIN_EMAIL y SIGCA_TEST_MEMBER_EMAIL de cuentas existentes autorizadas. Usa sesiones aisladas en memoria, no cambia contraseñas ni envía correos, conserva datos etiquetados VERIFICACION-F3A y cancela/desactiva sus registros al terminar. Inactiva y reactiva temporalmente al Colaborador para probar JWT/RLS; no ejecutar sobre una cuenta en operación sin coordinarlo. No crea ni elimina usuarios. Para aislamiento completo, ejecutarlo después del E2E simulado y con el servidor simulado detenido.
+
+La matriz, resultados, corrección de concurrencia y limitaciones están en [docs/PHASE3A_VERIFICATION.md](docs/PHASE3A_VERIFICATION.md). 3B y siguientes continúan sin implementar.
