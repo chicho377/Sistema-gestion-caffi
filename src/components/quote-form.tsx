@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Plus, Save, Ban, ImagePlus, RotateCcw } from "lucide-react";
 import Swal from "sweetalert2";
 import { toast } from "sonner";
-import { saveQuote, cancelQuote } from "@/features/orders/actions";
+import { saveQuote, cancelQuote, operateOrder } from "@/features/orders/actions";
 import { uploadQuoteFile } from "@/features/orders/files";
 import { totals, money, validateDates, type Quote, type QuoteLine, type ClientOption, type ProductOption, type QuoteFile } from "@/features/orders/domain";
 
@@ -17,7 +17,8 @@ export function QuoteForm({ order, initialLines, clients, products, admin, today
   const [product, setProduct] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
-  const editable = order.production_status === "quote";
+  const editable = order.production_status !== "cancelled";
+  const financialEditable = editable && order.production_status !== "delivered";
   const historical = admin && date < today;
   let preview: ReturnType<typeof totals> | null = null;
   let previewError = "";
@@ -36,9 +37,9 @@ export function QuoteForm({ order, initialLines, clients, products, admin, today
       const payload = { client_id: String(data.get("client_id")), order_date: date, requested_delivery_date: requested, notes: String(data.get("notes") ?? ""), discount_amount: discount,
         items: lines.map((line) => ({ id: line.id, product_id: line.product_id, product_name_snapshot: line.product_name_snapshot, description_snapshot: line.description_snapshot, quantity: line.quantity, unit_price: line.unit_price, discount_amount: line.discount_amount, customization: line.customization, notes: line.notes, is_active: line.is_active })) };
       try {
-        const result = await saveQuote(order.id, order.revision, payload);
+        const result = order.production_status === "quote" ? await saveQuote(order.id, order.revision, payload) : await operateOrder("amend_order", order.id, order.revision, { ...payload, reason: String(data.get("reason") ?? ""), zero_reason: String(data.get("zero_reason") ?? "") });
         if (result.error) { setError(result.error); return; }
-        toast.success("Cotización guardada"); router.push("/pedidos/" + result.id); router.refresh();
+        toast.success(order.production_status === "quote" ? "Cotización guardada" : "Pedido actualizado"); router.push("/pedidos/" + result.id); router.refresh();
       } catch { setError("No se pudo conectar. Tus cambios siguen en pantalla; verifica el pedido antes de reintentar."); }
     });
   }}>
@@ -47,7 +48,7 @@ export function QuoteForm({ order, initialLines, clients, products, admin, today
       <fieldset disabled={!editable || pending} className="quote-fields">
         <label>Cliente<select name="client_id" required defaultValue={order.client_id}>
           <option value="">Selecciona un cliente</option>
-          {clients.filter((c) => c.is_active || c.id === order.client_id || historical).map((c) => <option key={c.id} value={c.id}>{c.name}{!c.is_active ? " · Inactivo" : ""}</option>)}
+          {clients.filter((c) => (admin || order.production_status === "quote" || c.id === order.client_id) && (c.is_active || c.id === order.client_id || historical)).map((c) => <option key={c.id} value={c.id}>{c.name}{!c.is_active ? " · Inactivo" : ""}</option>)}
         </select></label>
         <label>Fecha del pedido<input name="order_date" type="date" required max={today} min={admin ? undefined : (order.order_date < today ? order.order_date : today)} value={date} readOnly={!admin} onChange={(e) => setDate(e.target.value)} /></label>
         <label>Entrega solicitada<input name="requested_delivery_date" type="date" required min={date} defaultValue={order.requested_delivery_date} /></label>
@@ -56,11 +57,11 @@ export function QuoteForm({ order, initialLines, clients, products, admin, today
       {admin && historical && <p className="muted">Registro histórico autorizado. La fecha real de creación se conserva automáticamente.</p>}
     </section>
     <section className="panel">
-      <h2>Puntadas de esta cotización</h2>
+      <h2>Puntadas de este encargo</h2>
       <p className="muted">Los precios y detalles guardados se conservan aunque cambie el catálogo.</p>
       {!lines.length && <p className="message">Todavía no hay líneas. Puedes guardar la cotización y completarla después.</p>}
       <div className="quote-lines">
-        {lines.map((line, index) => <fieldset key={line.id} className={`quote-line ${line.is_active ? "" : "quote-line-inactive"}`} disabled={!editable || pending}>
+        {lines.map((line, index) => <fieldset key={line.id} className={`quote-line ${line.is_active ? "" : "quote-line-inactive"}`} disabled={!financialEditable || pending}>
           <legend>Línea {index + 1} · {line.product_id ? line.product_sku_snapshot || "Catálogo" : "Personalizada"}{line.is_active ? "" : " · Inactiva"}</legend>
           <div className="quote-fields">
             <label className="quote-wide">Nombre<input aria-label={`Nombre línea ${index + 1}`} value={line.product_name_snapshot} readOnly={!!line.product_id} required maxLength={120} onChange={(e) => update(line.id, { product_name_snapshot: e.target.value })} /></label>
@@ -72,20 +73,22 @@ export function QuoteForm({ order, initialLines, clients, products, admin, today
             <label>Notas<textarea aria-label={`Notas línea ${index + 1}`} maxLength={3000} value={line.notes} onChange={(e) => update(line.id, { notes: e.target.value })} /></label>
           </div>
           <div className="quote-line-footer"><strong>Total: {preview ? money(preview.lines[index]) : "Revisa los importes"}</strong>
-            {editable && <button type="button" className="button secondary" onClick={() => update(line.id, { is_active: !line.is_active })}>{line.is_active ? <Ban size={16}/> : <RotateCcw size={16}/>} {line.is_active ? "Desactivar" : "Activar"} línea {index + 1}</button>}
+            {financialEditable && <button type="button" className="button secondary" onClick={() => update(line.id, { is_active: !line.is_active })}>{line.is_active ? <Ban size={16}/> : <RotateCcw size={16}/>} {line.is_active ? "Desactivar" : "Activar"} línea {index + 1}</button>}
           </div>
         </fieldset>)}
       </div>
-      {editable && <div className="quote-add"><label>Agregar desde<select aria-label="Producto de catálogo" value={product} onChange={(e) => setProduct(e.target.value)} disabled={pending}>
+      {financialEditable && <div className="quote-add"><label>Agregar desde<select aria-label="Producto de catálogo" value={product} onChange={(e) => setProduct(e.target.value)} disabled={pending}>
         <option value="">Línea personalizada</option>{products.filter((p) => p.is_active || historical).map((p) => <option key={p.id} value={p.id}>{p.sku} · {p.name}{p.is_active ? "" : " · Inactivo"}</option>)}
       </select></label><button type="button" className="button secondary" disabled={pending} onClick={addLine}><Plus size={18}/>Agregar línea</button></div>}
     </section>
     <section className="panel quote-summary">
-      <label>Descuento general CRC<input inputMode="decimal" required disabled={!editable || pending} value={discount} onChange={(e) => setDiscount(e.target.value.replace(",", "."))} /></label>
+      <label>Descuento general CRC<input inputMode="decimal" required disabled={!financialEditable || pending} value={discount} onChange={(e) => setDiscount(e.target.value.replace(",", "."))} /></label>
       {preview ? <dl><dt>Subtotal</dt><dd>{money(preview.subtotal)}</dd><dt>Total cotizado</dt><dd><strong>{money(preview.total)}</strong></dd></dl> : <p role="alert" className="message error">{previewError}</p>}
-      <p className="muted">Importes en colones. La confirmación y los pagos aún no están disponibles.</p>
+      <p className="muted">Importes en colones. El servidor valida el total y el saldo vigente al guardar.</p>
+      {admin && editable && order.production_status !== "quote" && <label>Motivo del cambio de cliente (si corresponde)<textarea name="reason" maxLength={1000} /></label>}
+      {admin && financialEditable && order.production_status !== "quote" && preview?.total === "0.00" && <label>Motivo de nueva autorización de total cero<textarea name="zero_reason" maxLength={1000} /></label>}
       {error && <p role="alert" className="message error">{error}</p>}
-      {editable && <button className="button primary" disabled={pending || !preview}><Save size={18}/>{pending ? "Guardando…" : "Guardar cotización"}</button>}
+      {editable && <button className="button primary" disabled={pending || !preview}><Save size={18}/>{pending ? "Guardando…" : order.production_status === "quote" ? "Guardar cotización" : "Guardar cambios"}</button>}
     </section>
   </form>;
 }

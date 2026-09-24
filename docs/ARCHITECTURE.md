@@ -467,3 +467,16 @@ Una feature está terminada cuando:
 - mantiene trazabilidad;
 - no rompe relaciones históricas;
 - cumple los criterios específicos del requisito.
+
+## Autorización vigente — Fase 3B
+
+3A aprobada y cerrada para DEV en 9a73fcd. El usuario autoriza únicamente 3B: confirmación/consecutivo anual/adelanto histórico, total cero autorizado, ciclo productivo con retrocesos, pagos/anulaciones, saldo derivado, cancelación y auditoría según D-19/D-20/D-21. Esta autorización sustituye las menciones anteriores que limitaban la implementación a 3A; no modifica decisiones funcionales. No autoriza 3C/3D/3E ni fases posteriores. A51 pendiente antes de producción, sin bloquear DEV.
+
+Excepción técnica expresa: sustituir únicamente las ocho CHECK de orders enumeradas en PHASE3B_VERIFICATION.md, con DROP CONSTRAINT ... RESTRICT y nuevas restricciones validadas en una misma transacción. Prohibición general de DROP, TRUNCATE, reset y borrados destructivos permanece. Ningún dato inválido se corrige automáticamente. Evidencia de avance y separación local/simulada/DEV en PHASE3B_VERIFICATION.md.
+
+
+### Implementación efectiva de 3B
+
+Pedidos conserva Server Components para lecturas con JWT y Server Actions con lista cerrada de operaciones para escrituras. confirm_order/register_payment/void_payment/amend_order/transition_order/correct_order_dates ejecutan la transacción en PostgreSQL; cliente nunca calcula el saldo autoritativo. Revisión compartida del pedido produce PT409 sin sobrescrituras silenciosas. order_history/order_deposit_default devuelven proyecciones acotadas. Interfaz: OrderOperations, tarjetas financieras móviles, SweetAlert2 y Sonner; detalle/listado existentes conservados. Evidencia local, simulada y DEV: PHASE3B_VERIFICATION.md. Ninguna implementación 3C/3D/3E.
+
+Excepción técnica adicional expresamente autorizada y aplicada en 20260924032507: sustituir únicamente orders_3b_zero_time_check con RESTRICT y validación en la misma transacción. Corrige ZT-01 sin modificar datos ni decisiones funcionales; conserva la autorización original de cero al corregir confirmed_at. La prohibición general de DROP continúa vigente. Evidencia en PHASE3B_VERIFICATION.md.

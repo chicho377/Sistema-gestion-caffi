@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { uuid } from "@/features/catalog/schema";
 import { QuoteForm, CancelQuoteButton, QuoteFiles } from "@/components/quote-form";
 import { businessDate, type Quote, type QuoteLine, type ClientOption, type ProductOption, type QuoteFile } from "@/features/orders/domain";
+import { OrderOperations } from "@/components/order-operations";
+import { orderStates, type Payment, type PaymentSummary, type OrderEvent } from "@/features/orders/domain";
 import { QuoteAlert } from "@/features/orders/alert";
 export default async function QuotePage({ params }: { params: Promise<{ id: string }> }) {
   const actor = await requireProfile(); const { id } = await params; const fresh = id === "nuevo";
@@ -33,6 +35,17 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
     lines = items.map((line) => ({ ...line, quantity: String(line.quantity) })) as QuoteLine[];
     files = images;
   }
+  let summary: PaymentSummary | null = null; let payments: Payment[] = []; const history: OrderEvent[] = []; let defaultDeposit = "";
+  if (!fresh) {
+    const [financial, paid, deposit] = await Promise.all([client.from("order_payment_summary").select("*").eq("order_id", id).single(), children<Payment>("payments_read", "*", true), client.rpc("order_deposit_default")]);
+    if (financial.error || deposit.error) throw Error("No se pudo cargar la información financiera del pedido.");
+    summary = financial.data; payments = paid; defaultDeposit = deposit.data;
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await client.rpc("order_history", { target: id }).range(offset, offset + 499);
+      if (error) throw Error("No se pudo cargar el historial operativo.");
+      history.push(...data as OrderEvent[]); if (data.length < 500) break;
+    }
+  }
   // Lectura comercial paginada: nunca cargar costos de materiales ni truncar silenciosamente opciones.
   async function options<T>(table: string, columns: string) {
     const result: T[] = [];
@@ -43,9 +56,10 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
     }
   }
   const [clients, products] = await Promise.all([options<ClientOption>("clients","id,name,is_active"),options<ProductOption>("quote_products_read","id,name,sku,description,base_price,is_active")]);
-  return <><Link className="text-link" href="/pedidos">Volver a pedidos</Link><div className="page-heading"><div><span className="eyebrow">TU PRÓXIMA CREACIÓN</span><h1>{fresh ? "Nueva cotización" : order.production_status === "cancelled" ? "Cotización cancelada" : "Cotización"}</h1>{!fresh && <p className="muted">Referencia interna: {order.id}</p>}</div>{!fresh && order.production_status === "quote" && <CancelQuoteButton id={id} revision={order.revision}/>}</div>
+  return <><Link className="text-link" href="/pedidos">Volver a pedidos</Link><div className="page-heading"><div><span className="eyebrow">TU PRÓXIMA CREACIÓN</span><h1>{fresh ? "Nueva cotización" : order.order_number ?? (order.production_status === "cancelled" ? "Cotización cancelada" : "Cotización")}</h1>{!fresh && <p className="muted">{orderStates[order.production_status]} · Referencia interna: {order.id}</p>}</div>{!fresh && order.production_status === "quote" && <CancelQuoteButton id={id} revision={order.revision}/>}</div>
     <QuoteAlert date={order.requested_delivery_date} status={order.production_status} today={today}/>
     {order.cancel_reason && <p className="message">Cancelada: {order.cancel_reason}. El historial se conserva; no se permite reactivarla.</p>}
+    {summary && <OrderOperations key={order.id + "-operations-" + order.revision} order={order} summary={summary} payments={payments} history={history} admin={actor.role === "admin"} defaultDeposit={defaultDeposit}/>}
     <QuoteForm key={`${order.id}-${order.revision}`} order={order} initialLines={lines} clients={clients} products={products} admin={actor.role === "admin"} today={today}/>
-    {!fresh && <QuoteFiles id={id} files={files} editable={order.production_status === "quote"}/>}</>;
+    {!fresh && <QuoteFiles id={id} files={files} editable={order.production_status !== "cancelled"}/>}</>;
 }

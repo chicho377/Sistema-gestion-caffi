@@ -53,7 +53,8 @@ export type QuoteLine = {
 };
 export type Quote = {
   id: string; client_id: string; client_snapshot: { name: string; phone?: string; email?: string };
-  order_date: string; requested_delivery_date: string; production_status: "quote" | "cancelled";
+  order_date: string; requested_delivery_date: string; production_status: "quote" | "confirmed" | "in_production" | "ready" | "delivered" | "cancelled";
+  order_number?: string | null; confirmed_at?: string | null; delivered_at?: string | null; deposit_required_amount?: string | null; deposit_percentage_applied?: string | null;
   subtotal: string; discount_amount: string; total: string; notes: string;
   revision: number; created_at: string; cancel_reason: string | null;
 };
@@ -75,3 +76,8 @@ export function totals(items: QuoteLine[], discount: string) {
   if (general > subtotal) throw new Error("El descuento general supera el subtotal.");
   return { subtotal: decimal(subtotal), total: decimal(subtotal - general), lines };
 }
+
+export const orderStates = { quote: "Cotización", confirmed: "Confirmado", in_production: "En producción", ready: "Listo", delivered: "Entregado", cancelled: "Cancelado" } as const;
+export type PaymentSummary = { total: string; paid: string; balance: string; financial_status: "no_deposit" | "partially_paid" | "paid"; deposit_required_amount: string | null; operational_deposit_required: string | null; deposit_covered: boolean };
+export type Payment = { id: string; amount: string; payment_date: string; payment_method: string; reference: string; notes: string; status: "valid" | "voided"; void_reason: string | null };
+export type OrderEvent = { event_id: string; happened_at: string; action: string; actor: string; reason: string | null; from_state: string | null; to_state: string | null };

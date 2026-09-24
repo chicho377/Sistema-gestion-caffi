@@ -270,3 +270,11 @@ Decisiones técnicas implementadas: RPC transaccional con bloqueo y revisión op
 La verificación real detectó que usar 40001 para un conflicto de revisión provocaba reintentos automáticos de PostgREST. Se aplicó una migración adicional con PT409/HTTP 409; misma integridad, permisos y rechazo de edición obsoleta. Es una corrección técnica, no una nueva decisión funcional. Documentación oficial: https://supabase.com/docs/guides/troubleshooting/high-cpu-and-infinite-transaction-retries-when-using-custom-error-codes-in-rpc-functions-77326b
 
 Estado/evidencia en PHASE3A_VERIFICATION.md. No se implementan confirmación, consecutivos, adelantos, pagos, ingresos manuales, gastos ni fases posteriores.
+
+## Autorización vigente — Fase 3B
+
+3A aprobada y cerrada para DEV en 9a73fcd. El usuario autoriza únicamente 3B: confirmación/consecutivo anual/adelanto histórico, total cero autorizado, ciclo productivo con retrocesos, pagos/anulaciones, saldo derivado, cancelación y auditoría según D-19/D-20/D-21. Esta autorización sustituye las menciones anteriores que limitaban la implementación a 3A; no modifica decisiones funcionales. No autoriza 3C/3D/3E ni fases posteriores. A51 pendiente antes de producción, sin bloquear DEV.
+
+Excepción técnica expresa: sustituir únicamente las ocho CHECK de orders enumeradas en PHASE3B_VERIFICATION.md, con DROP CONSTRAINT ... RESTRICT y nuevas restricciones validadas en una misma transacción. Prohibición general de DROP, TRUNCATE, reset y borrados destructivos permanece. Ningún dato inválido se corrige automáticamente. Evidencia de avance y separación local/simulada/DEV en PHASE3B_VERIFICATION.md.
+
+Excepción técnica adicional expresamente autorizada y aplicada en 20260924032507: sustituir únicamente orders_3b_zero_time_check con RESTRICT y validación en la misma transacción. Corrige ZT-01 sin modificar datos ni decisiones funcionales; conserva la autorización original de cero al corregir confirmed_at. La prohibición general de DROP continúa vigente. Evidencia en PHASE3B_VERIFICATION.md.

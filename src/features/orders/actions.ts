@@ -30,3 +30,18 @@ export async function cancelQuote(id: string, revision: number, reason: string):
     revalidatePath("/pedidos", "layout"); return { success: true };
   } catch { return { error: "No se pudo conectar. Comprueba el estado antes de reintentar." }; }
 }
+
+export type OrderOperation = "confirm_order" | "register_payment" | "void_payment" | "transition_order" | "correct_order_dates" | "amend_order";
+export async function operateOrder(operation: OrderOperation, id: string, revision: number, payload: Record<string, unknown>): Promise<QuoteResult> {
+  await requireProfile();
+  if (!["confirm_order", "register_payment", "void_payment", "transition_order", "correct_order_dates", "amend_order"].includes(operation) || !uuid.test(id) || !Number.isInteger(revision) || revision < 1 || !payload || typeof payload !== "object") return { error: "Operación inválida." };
+  try {
+    const { error } = await (await createClient()).rpc(operation, { target: id, expected_revision: revision, payload });
+    if (error) {
+      if (["PT409", "22023", "42501"].includes(error.code)) return { error: error.message };
+      return { error: "No se pudo guardar. Revisa los campos y la cronología e intenta nuevamente." };
+    }
+    revalidatePath("/pedidos", "layout");
+    return { id, success: true };
+  } catch { return { error: "No se pudo conectar. Tus cambios siguen en pantalla; verifica el pedido antes de reintentar." }; }
+}

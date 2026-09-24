@@ -829,3 +829,18 @@ Trigger quote_audit AFTER INSERT/UPDATE en las tres tablas reutiliza private.aud
 Storage: bucket privado order-references, 5 MiB, image/webp. Policy order_references_read permite SELECT a usuario activo solo si existe order_files con esa ruta, protegido por RLS. Las versiones previas mantienen acceso autorizado. Sin policies de carga/sobrescritura/borrado para authenticated. La descarga usa JWT del usuario mediante /api/order-file/[id], vuelve a validar acceso y devuelve Cache-Control: private, no-store. Un objeto subido sin registro asociado queda inaccesible al cliente; requiere revisión administrativa, sin DELETE automático.
 
 La sección 11 sigue definiendo el modelo objetivo de subfases posteriores, no objetos existentes. No hay order_counters, payments, manual_income, expenses ni expense_files de Fase 3 en este lote. Ver evidencia en PHASE3A_VERIFICATION.md.
+
+## Autorización vigente — Fase 3B
+
+3A aprobada y cerrada para DEV en 9a73fcd. El usuario autoriza únicamente 3B: confirmación/consecutivo anual/adelanto histórico, total cero autorizado, ciclo productivo con retrocesos, pagos/anulaciones, saldo derivado, cancelación y auditoría según D-19/D-20/D-21. Esta autorización sustituye las menciones anteriores que limitaban la implementación a 3A; no modifica decisiones funcionales. No autoriza 3C/3D/3E ni fases posteriores. A51 pendiente antes de producción, sin bloquear DEV.
+
+Excepción técnica expresa: sustituir únicamente las ocho CHECK de orders enumeradas en PHASE3B_VERIFICATION.md, con DROP CONSTRAINT ... RESTRICT y nuevas restricciones validadas en una misma transacción. Prohibición general de DROP, TRUNCATE, reset y borrados destructivos permanece. Ningún dato inválido se corrige automáticamente. Evidencia de avance y separación local/simulada/DEV en PHASE3B_VERIFICATION.md.
+
+
+## 13. Esquema implementado de Fase 3B
+
+Las migraciones 20260923210849 y 20260923211331 amplían el modelo histórico de 3A: orders admite el ciclo aprobado, identidad comercial y adelanto inmutable; se añaden order_counters y payments. payments_read/order_payment_summary transportan importes exactos como texto y derivan saldo/estado financiero. Sin financial_status editable, manual_income ni expenses. Inventario completo, CHECKs, FKs, índices, RPC, triggers y RLS en PHASE3B_VERIFICATION.md.
+
+Todas las escrituras de 3B bloquean perfil/pedido y validan revision; el contador anual usa UPSERT transaccional. Anulación conserva pagos y cliente histórico. Los permisos directos son solo lectura operativa; el contador no se expone a roles de aplicación. El historial operativo es una proyección explícita, no acceso general a audit_log. private sigue fuera de Data API.
+
+La migración adicional 20260924032507 corrige únicamente orders_3b_zero_time_check con autorización expresa: fecha de autorización NULL o finita con confirmed_at presente. No exige que la autorización ocurra después de una corrección posterior de confirmed_at; conserva su evidencia original. Actor/motivo/revisión siguen validados por CHECKs/RPC. Regresión ZT-01 y equivalencia local/DEV aprobadas.

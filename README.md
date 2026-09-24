@@ -273,7 +273,7 @@ La auditoría añade también `20260923004701_phase2_phone_validation.sql`: rech
 
 Checkpoint documental previo: f0dfc9b. Implementación exclusiva de 3A; D-19/D-20/D-21 vigentes. Entrada desde Pedidos: crear cotización, seleccionar cliente, agregar líneas de catálogo o personalizadas, modificar fechas/precios/descuentos/notas, guardar y adjuntar imágenes privadas. Admin y Colaborador activos pueden operar cotizaciones; solo Admin puede registrar fecha histórica. Cancelar requiere motivo y conserva todo el historial.
 
-No existe Confirmar pedido ni número PED asignado. Totales en CRC, calculados en PostgreSQL; vista previa decimal exacta. Las cotizaciones pueden guardarse vacías, sin consumir consecutivos o adelantos. Referencias JPEG/PNG/WebP: hasta 5 MB y 25 MP, sin animación; reemplazar conserva la versión anterior.
+En el cierre original de 3A no existía Confirmar pedido ni número PED asignado; 3B amplía ahora ese flujo. Totales en CRC, calculados en PostgreSQL; vista previa decimal exacta. Las cotizaciones pueden guardarse vacías, sin consumir consecutivos o adelantos. Referencias JPEG/PNG/WebP: hasta 5 MB y 25 MP, sin animación; reemplazar conserva la versión anterior.
 
 Migraciones nuevas, ya aplicadas solo a DEV pysgfnwsycgoneaecgcl:
 
@@ -285,3 +285,16 @@ No requiere nuevas dependencias ni variables de entorno. Para otra base autoriza
 Validación reproducible: npm run lint, npm run typecheck, npm test, npm run build, npm run test:e2e, npm audit --omit=dev. Los E2E usan fixture simulado; no equivalen a Supabase real. El script tests/phase3a-real.mjs requiere servidor local de producción con .env.local de DEV, SIGCA_REAL_TESTS=1, SIGCA_TEST_ADMIN_EMAIL y SIGCA_TEST_MEMBER_EMAIL de cuentas existentes autorizadas. Usa sesiones aisladas en memoria, no cambia contraseñas ni envía correos, conserva datos etiquetados VERIFICACION-F3A y cancela/desactiva sus registros al terminar. Inactiva y reactiva temporalmente al Colaborador para probar JWT/RLS; no ejecutar sobre una cuenta en operación sin coordinarlo. No crea ni elimina usuarios. Para aislamiento completo, ejecutarlo después del E2E simulado y con el servidor simulado detenido.
 
 La matriz, resultados, corrección de concurrencia y limitaciones están en [docs/PHASE3A_VERIFICATION.md](docs/PHASE3A_VERIFICATION.md). 3B y siguientes continúan sin implementar.
+
+
+## Fase 3B — Confirmación, ciclo productivo y pagos
+
+Implementada exclusivamente en SIGCA DEV pysgfnwsycgoneaecgcl. Desde una cotización guardada se confirma el pedido, asignando número PED anual y adelanto histórico; luego se registran pagos, avanza producción y entrega, se anulan pagos o realizan retrocesos/cancelación según rol. Totales, saldos y permisos se validan en operaciones transaccionales; Colaborador no accede a auditoría general/costos.
+
+Migraciones: 20260923210849_phase3b_order_constraints.sql y 20260923211331_phase3b_order_operations.sql. La primera usa exclusivamente la excepción autorizada para ocho CHECKs, documentada con expresiones anteriores/nuevas; no modifica datos ni migraciones previas. La segunda añade operaciones/tablas/vistas de 3B. Sin dependencias ni variables nuevas.
+
+Ver [matriz y resultados de 3B](docs/PHASE3B_VERIFICATION.md). Comandos locales habituales: npm run lint, npm run typecheck, npm test, npm run build, npm run test:e2e, npm audit --omit=dev. E2E usa datos simulados; para la prueba real, con servidor de producción local y las mismas variables SIGCA_REAL_TESTS/SIGCA_TEST_ADMIN_EMAIL/SIGCA_TEST_MEMBER_EMAIL descritas arriba, ejecutar node tests/phase3b-real.mjs. Prueba cuentas existentes, seis concurrencias, RLS, UI y cinco anchos. Conserva fixtures, pagos y auditoría; cancela pedidos/desactiva cliente al finalizar. Inactiva brevemente al Colaborador y restaura su estado; coordinar antes de repetir durante operación.
+
+A51 sigue pendiente antes de producción. INFO de order_counters sin policies es intencional: el contador solo se usa dentro de confirmación, sin grants de aplicación. No se implementaron 3C, 3D ni 3E.
+
+Revisión final de 3B: ZT-01 resuelto mediante 20260924032507_phase3b_zero_authorization_chronology.sql, con excepción adicional expresa. La corrección de confirmed_at conserva la autorización de total cero original; verificada en local/DEV y sin cambios de datos al migrar. 77 verificaciones UI/API reales de 3B y 92 de regresión 3A aprobadas. A51 permanece pendiente antes de producción.

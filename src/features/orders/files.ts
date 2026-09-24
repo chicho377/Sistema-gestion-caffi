@@ -16,7 +16,7 @@ export async function uploadQuoteFile(orderId: string, form: FormData): Promise<
   try {
     const client = await createClient();
     const { data: order } = await client.from("orders").select("production_status").eq("id", orderId).single();
-    if (order?.production_status !== "quote") return { error: "Cotización no disponible para modificar archivos." };
+    if (!order || order.production_status === "cancelled") return { error: "Pedido no disponible para modificar archivos." };
     const bytes = await normalizeImage(Buffer.from(await file.arrayBuffer()), file.type);
     const admin = createAdminClient();
     const path = `orders/${orderId}/${randomUUID()}.webp`;

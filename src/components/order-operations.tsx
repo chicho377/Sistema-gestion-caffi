@@ -1,0 +1,59 @@
+"use client";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Check, ArrowRight, Undo2, Ban, Wallet } from "lucide-react";
+import Swal from "sweetalert2";
+import { toast } from "sonner";
+import { operateOrder, type OrderOperation } from "@/features/orders/actions";
+import { money, cents, orderStates, type Quote, type Payment, type PaymentSummary, type OrderEvent } from "@/features/orders/domain";
+
+const methods: Record<string, string> = { cash: "Efectivo", sinpe_movil: "SINPE Móvil", transfer: "Transferencia", card: "Tarjeta", other: "Otro" };
+const events: Record<string, string> = { "order.confirmed": "Confirmación", "order.deposit_override": "Adelanto especial", "order.zero_authorized": "Total cero autorizado", "order.payment_recorded": "Pago registrado", "order.payment_voided": "Pago anulado", "order.production_override": "Producción autorizada con adelanto pendiente", "order.transitioned": "Cambio de estado", "order.reversed": "Retroceso autorizado", "order.reopened": "Pedido reabierto", "order.delivered": "Entrega", "order.cancelled": "Cancelación", "quote.cancelled": "Cotización cancelada", "order.client_changed": "Cambio de cliente", "order.financial_changed": "Modificación comercial", "order.dates_corrected": "Corrección de fechas" };
+const date = (value: string) => new Intl.DateTimeFormat("es-CR", { timeZone: "America/Costa_Rica", dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+const effective = (data: FormData, key: string) => data.get(key) ? { [key]: `${data.get(key)}-06:00` } : {};
+
+export function OrderOperations({ order, summary, payments, history, admin, defaultDeposit }: { order: Quote; summary: PaymentSummary; payments: Payment[]; history: OrderEvent[]; admin: boolean; defaultDeposit: string }) {
+  const router = useRouter(); const [pending, start] = useTransition(); const [error, setError] = useState("");
+  const state = order.production_status;
+  const next = ({ confirmed: "in_production", in_production: "ready", ready: "delivered" } as const)[state as "confirmed" | "in_production" | "ready"];
+  const previous = ({ in_production: "confirmed", ready: "in_production", delivered: "ready" } as const)[state as "in_production" | "ready" | "delivered"];
+  function run(operation: OrderOperation, payload: Record<string, unknown>) {
+    setError(""); start(async () => { try {
+      const result = await operateOrder(operation, order.id, order.revision, payload);
+      if (result.error) { setError(result.error); return; }
+      toast.success("Operación guardada"); router.refresh();
+    } catch { setError("No se pudo conectar. Conservamos los datos del formulario; comprueba el estado antes de reintentar."); } });
+  }
+  async function critical(title: string, text: string, reason = false) {
+    return Swal.fire({ title, text, input: reason ? "textarea" : undefined, inputLabel: reason ? "Motivo obligatorio" : undefined, inputAttributes: { maxlength: "1000" }, inputValidator: reason ? (value: string) => !value.trim() ? "Escribe el motivo" : undefined : undefined, showCancelButton: true, confirmButtonText: "Confirmar", cancelButtonText: "Volver", confirmButtonColor: "#A70459" });
+  }
+  return <div className="quote-form" aria-busy={pending}>
+    {error && <p role="alert" className="message error">{error}</p>}
+    {state === "quote" && <section className="panel"><h2>Confirmar el encargo</h2><p>Al confirmar se asigna el número de pedido y se fija el adelanto histórico. Guarda primero cualquier cambio de la cotización.</p><p>Adelanto habitual: {defaultDeposit}%.</p>
+      <form onSubmit={async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const result = await critical("Confirmar pedido", "Se asignará su consecutivo definitivo. No podrá volver a Cotización."); if (result.isConfirmed) run("confirm_order", { ...effective(data, "confirmed_at"), ...(admin ? { deposit_percentage: String(data.get("deposit_percentage") ?? ""), zero_reason: String(data.get("zero_reason") ?? "") } : {}) }); }}>
+        <fieldset className="quote-fields" disabled={pending}>
+          {admin && <><label>Porcentaje especial (opcional)<input name="deposit_percentage" inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" placeholder={defaultDeposit} /></label><label>Confirmación histórica (hora Costa Rica)<input name="confirmed_at" type="datetime-local" /></label></>}
+          {cents(order.total) === BigInt(0) && (admin ? <label>Motivo para autorizar total cero<textarea name="zero_reason" required maxLength={1000}/></label> : <p className="message">Solo Administración puede autorizar un pedido con total cero.</p>)}
+          <button className="button primary" disabled={!admin && cents(order.total) === BigInt(0)}><Check size={18}/>Confirmar pedido</button>
+        </fieldset>
+      </form>
+    </section>}
+    {order.confirmed_at && <>
+      <section className="panel"><h2>Importes del pedido</h2><dl className="order-amounts"><div><dt>Total</dt><dd>{money(summary.total)}</dd></div><div><dt>Pagado</dt><dd>{money(summary.paid)}</dd></div><div><dt>Saldo</dt><dd>{money(summary.balance)}</dd></div><div><dt>Estado financiero</dt><dd>{{ no_deposit: "Sin adelanto", partially_paid: "Abonado", paid: "Pagado" }[summary.financial_status]}</dd></div><div><dt>Adelanto histórico ({order.deposit_percentage_applied}%)</dt><dd>{money(summary.deposit_required_amount ?? "0")}</dd></div><div><dt>Adelanto operativo</dt><dd>{money(summary.operational_deposit_required ?? "0")} · {summary.deposit_covered ? "Cubierto" : "Pendiente"}</dd></div></dl><p className="muted">Confirmado: {date(order.confirmed_at)}{order.delivered_at && ` · Entregado: ${date(order.delivered_at)}`}</p></section>
+      {state !== "cancelled" && <section className="panel"><h2>Ciclo productivo · {orderStates[state]}</h2>
+        <div className="order-actions">
+          {next && <button className="button primary" disabled={pending || (!admin && state === "confirmed" && !summary.deposit_covered)} onClick={async () => { const override = state === "confirmed" && !summary.deposit_covered; const result = await critical(`Pasar a ${orderStates[next]}`, override ? "El adelanto está pendiente. Esta excepción administrativa quedará auditada." : next === "delivered" ? "Se registrará la entrega con la fecha y hora actuales." : "Se registrará el cambio de estado.", override); if (result.isConfirmed) run("transition_order", { state: next, ...(override ? { reason: result.value } : {}) }); }}><ArrowRight size={18}/>{orderStates[next]}</button>}
+          {admin && previous && <button className="button secondary" disabled={pending} onClick={async () => { const result = await critical(`Volver a ${orderStates[previous]}`, "Se conservará el estado anterior en el historial.", true); if (result.isConfirmed) run("transition_order", { state: previous, reason: result.value }); }}><Undo2 size={18}/>Volver a {orderStates[previous]}</button>}
+          {admin && state !== "delivered" && <button className="button secondary" disabled={pending} onClick={async () => { const result = await critical("Cancelar pedido", "La cancelación es definitiva. Los pagos se conservan; no habrá devolución automática.", true); if (result.isConfirmed) run("transition_order", { state: "cancelled", reason: result.value }); }}><Ban size={18}/>Cancelar pedido</button>}
+        </div>
+        {state === "confirmed" && !summary.deposit_covered && <p className="message">Adelanto pendiente para comenzar producción. Solo Administración puede autorizar una excepción.</p>}
+        {admin && <details><summary>Corregir fechas con motivo</summary><p className="muted">Hora de Costa Rica. No puede cambiarse el año del consecutivo ni romper la cronología de los pagos.</p><form onSubmit={async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const result = await critical("Corregir fechas", "La fecha anterior y el motivo quedarán auditados."); if (result.isConfirmed) run("correct_order_dates", { ...effective(data, "confirmed_at"), ...effective(data, "delivered_at"), reason: String(data.get("reason")) }); }}><fieldset className="quote-fields" disabled={pending}><label>Nueva fecha de confirmación<input type="datetime-local" name="confirmed_at"/></label>{state === "delivered" && <label>Nueva fecha de entrega<input type="datetime-local" name="delivered_at"/></label>}<label>Motivo de corrección<textarea name="reason" required maxLength={1000}/></label><button className="button secondary">Corregir fechas</button></fieldset></form></details>}
+      </section>}
+      <section className="panel"><h2>Pagos</h2>
+        {!payments.length ? <p className="message">Este pedido todavía no tiene pagos.</p> : <div className="catalog-table-wrap"><table className="catalog-table"><thead><tr><th>Fecha</th><th>Monto</th><th>Método / referencia</th><th>Estado</th><th>Acción</th></tr></thead><tbody>{payments.map((p) => <tr key={p.id}><td data-label="Fecha">{date(p.payment_date)}</td><td data-label="Monto">{money(p.amount)}</td><td data-label="Método">{methods[p.payment_method]}<small>{p.reference}</small><small>{p.notes}</small></td><td data-label="Estado">{p.status === "valid" ? "Válido" : "Anulado"}<small>{p.void_reason}</small></td><td>{admin && p.status === "valid" && <button className="button secondary" disabled={pending} onClick={async () => { const result = await critical("Anular pago", "El saldo se recalculará. El pago y su motivo permanecerán en el historial.", true); if (result.isConfirmed) run("void_payment", { payment_id: p.id, reason: result.value }); }}><Ban size={16}/>Anular pago</button>}</td></tr>)}</tbody></table></div>}
+        {state !== "cancelled" && <form onSubmit={async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const amount = String(data.get("amount")).replace(",", "."); try { if (cents(amount) <= BigInt(0) || cents(amount) > cents(summary.balance)) throw Error("El monto debe ser positivo y no superar el saldo."); } catch (e) { setError((e as Error).message); return; } const result = await critical("Registrar pago", `${money(amount)}. Un pago registrado se corrige mediante anulación; no puede editarse.`); if (result.isConfirmed) run("register_payment", { amount, payment_method: data.get("payment_method"), reference: data.get("reference"), notes: data.get("notes"), ...effective(data, "payment_date") }); }}><h3>Registrar pago</h3><fieldset className="quote-fields" disabled={pending || cents(summary.balance) === BigInt(0)}><label>Monto CRC<input name="amount" inputMode="decimal" required/></label><label>Método<select name="payment_method">{Object.entries(methods).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label>Referencia<input name="reference" maxLength={300}/></label><label>Observación<textarea name="notes" maxLength={3000}/></label>{admin && <label>Fecha histórica (hora Costa Rica)<input name="payment_date" type="datetime-local"/></label>}<button className="button primary"><Wallet size={18}/>Registrar pago</button></fieldset></form>}
+      </section>
+    </>}
+    <section className="panel"><h2>Historial operativo</h2>{!history.length ? <p>No hay operaciones registradas todavía.</p> : <ol className="order-history">{history.map((e) => <li key={e.event_id}><strong>{events[e.action] ?? "Operación registrada"}</strong><span>{date(e.happened_at)} · {e.actor}</span>{e.from_state && e.to_state && <span>{orderStates[e.from_state as keyof typeof orderStates]} → {orderStates[e.to_state as keyof typeof orderStates]}</span>}{e.reason && <p>{e.reason}</p>}</li>)}</ol>}</section>
+  </div>;
+}

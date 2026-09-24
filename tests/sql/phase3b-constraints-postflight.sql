@@ -1,0 +1,5 @@
+select jsonb_build_object(
+ 'old_checks',(select count(*) from pg_constraint where conrelid='public.orders'::regclass and conname in ('orders_production_status_check','orders_order_number_check','orders_confirmed_at_check','orders_delivered_at_check','orders_zero_total_authorized_by_check','orders_zero_total_authorized_at_check','orders_zero_total_reason_check','orders_check2')),
+ 'new_checks',(select jsonb_agg(jsonb_build_object('name',conname,'expression',pg_get_constraintdef(oid),'validated',convalidated) order by conname) from pg_constraint where conrelid='public.orders'::regclass and conname like 'orders_3b_%'),
+ 'orders_hash',(select md5(coalesce(string_agg((to_jsonb(o)-array['number_year','number_sequence','deposit_percentage_override','deposit_percentage_applied','deposit_required_amount','commercial_revision','zero_total_authorized_revision'])::text,'' order by id),'')) from public.orders o),
+ 'audit_hash',(select md5(coalesce(string_agg(to_jsonb(a)::text,'' order by id),'')) from public.audit_log a)) as postflight;
