@@ -79,5 +79,5 @@ export function totals(items: QuoteLine[], discount: string) {
 
 export const orderStates = { quote: "Cotización", confirmed: "Confirmado", in_production: "En producción", ready: "Listo", delivered: "Entregado", cancelled: "Cancelado" } as const;
 export type PaymentSummary = { total: string; paid: string; balance: string; financial_status: "no_deposit" | "partially_paid" | "paid"; deposit_required_amount: string | null; operational_deposit_required: string | null; deposit_covered: boolean };
-export type Payment = { id: string; amount: string; payment_date: string; payment_method: string; reference: string; notes: string; status: "valid" | "voided"; void_reason: string | null };
+export type Payment = { id: string; amount: string; payment_date: string; payment_method: string; payment_type?: string | null; reference: string; notes: string; status: "valid" | "voided"; void_reason: string | null };
 export type OrderEvent = { event_id: string; happened_at: string; action: string; actor: string; reason: string | null; from_state: string | null; to_state: string | null };

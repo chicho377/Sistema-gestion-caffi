@@ -56,6 +56,7 @@ begin
  begin perform public.confirm_order('64000000-0000-4000-8000-000000000099',1,'{"confirmed_at":"2023-01-01T00:00:00-06:00"}');raise exception 'Fallo no activado';exception when check_violation then null;end;
  if (select order_number from public.orders where id='64000000-0000-4000-8000-000000000099') is not null or coalesce((select last_sequence from public.order_counters where year=2023),0)<>n then raise exception 'Rollback incompleto';end if;
  if h<>(select md5(coalesce(jsonb_agg(to_jsonb(a))::text,'')) from public.audit_log a where entity_id='64000000-0000-4000-8000-000000000099') then raise exception 'Auditoría parcial';end if;
+ if exists(select 1 from public.orders where id='64000000-0000-4000-8000-000000000099' and (confirmed_at is not null or production_status<>'quote' or deposit_percentage_applied is not null or deposit_required_amount is not null or number_year is not null or number_sequence is not null or revision<>1)) then raise exception 'Confirmación parcial';end if;
 end $$;
 rollback;
 select 'PASS 3B: históricos, cronología, overrides, snapshots y rollback de contador' as result;

@@ -1150,3 +1150,8 @@ details[open] > summary {
 
 /* Fase 3B: importes e historial adaptables sin tablas anchas en móvil. */
 .order-amounts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:1rem}.order-amounts div{padding:1rem;background:var(--color-blush,#FFF0F6);border-radius:1rem}.order-amounts dt{font-size:.875rem}.order-amounts dd{margin:0;font-weight:600;overflow-wrap:anywhere}.order-actions{display:flex;flex-wrap:wrap;gap:.75rem;margin:1rem 0}.order-history{padding-left:1.25rem;display:grid;gap:1rem}.order-history li{overflow-wrap:anywhere}.order-history span{display:block;font-size:.875rem}details>summary{cursor:pointer;min-height:44px;padding:.75rem 0}
+
+/* Auditoría 3B: acción crítica distinguible y separada en touch. */
+.button.danger-action{border-color:var(--color-danger);color:var(--color-danger)}
+.order-actions .danger-action{margin-top:12px;flex-basis:100%}
+@media(min-width:768px){.order-actions .danger-action{margin-top:0;margin-left:12px;flex-basis:auto}}

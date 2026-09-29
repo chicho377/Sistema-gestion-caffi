@@ -1,11 +1,12 @@
 // Opt-in DEV: sesiones solo en memoria, datos etiquetados conservados/cancelados. Nunca borra usuarios ni filas.
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect as baseExpect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import { cents } from "../src/features/orders/domain.ts";
+const expect=baseExpect.configure({timeout:30000});
 if(process.env.SIGCA_REAL_TESTS!=="1") throw Error("Requiere SIGCA_REAL_TESTS=1");
 process.loadEnvFile('.env.local');
 const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;

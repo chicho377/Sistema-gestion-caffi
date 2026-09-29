@@ -284,7 +284,7 @@ No requiere nuevas dependencias ni variables de entorno. Para otra base autoriza
 
 Validación reproducible: npm run lint, npm run typecheck, npm test, npm run build, npm run test:e2e, npm audit --omit=dev. Los E2E usan fixture simulado; no equivalen a Supabase real. El script tests/phase3a-real.mjs requiere servidor local de producción con .env.local de DEV, SIGCA_REAL_TESTS=1, SIGCA_TEST_ADMIN_EMAIL y SIGCA_TEST_MEMBER_EMAIL de cuentas existentes autorizadas. Usa sesiones aisladas en memoria, no cambia contraseñas ni envía correos, conserva datos etiquetados VERIFICACION-F3A y cancela/desactiva sus registros al terminar. Inactiva y reactiva temporalmente al Colaborador para probar JWT/RLS; no ejecutar sobre una cuenta en operación sin coordinarlo. No crea ni elimina usuarios. Para aislamiento completo, ejecutarlo después del E2E simulado y con el servidor simulado detenido.
 
-La matriz, resultados, corrección de concurrencia y limitaciones están en [docs/PHASE3A_VERIFICATION.md](docs/PHASE3A_VERIFICATION.md). 3B y siguientes continúan sin implementar.
+La matriz, resultados, corrección de concurrencia y limitaciones de ese cierre están en [docs/PHASE3A_VERIFICATION.md](docs/PHASE3A_VERIFICATION.md). La autorización posterior de 3B se describe a continuación; 3C y siguientes continúan fuera de alcance.
 
 
 ## Fase 3B — Confirmación, ciclo productivo y pagos
@@ -298,3 +298,7 @@ Ver [matriz y resultados de 3B](docs/PHASE3B_VERIFICATION.md). Comandos locales 
 A51 sigue pendiente antes de producción. INFO de order_counters sin policies es intencional: el contador solo se usa dentro de confirmación, sin grants de aplicación. No se implementaron 3C, 3D ni 3E.
 
 Revisión final de 3B: ZT-01 resuelto mediante 20260924032507_phase3b_zero_authorization_chronology.sql, con excepción adicional expresa. La corrección de confirmed_at conserva la autorización de total cero original; verificada en local/DEV y sin cambios de datos al migrar. 77 verificaciones UI/API reales de 3B y 92 de regresión 3A aprobadas. A51 permanece pendiente antes de producción.
+
+Auditoría posterior al checkpoint `f1c2e77`: `20260924034005_phase3b_audit_validation.sql` añade el tipo descriptivo de pago previsto por RF-PAG-01 y diferencia entradas inválidas (400), permisos (403) y conflictos (409). No modifica pagos anteriores ni reglas de negocio. La interfaz distingue cancelación/anulación con rojo y texto explícito, enfoca errores y valida el porcentaje también en cliente. Resultados actualizados, trazabilidad de las CHECKs y matriz JWT en la sección «Auditoría de cierre» de [PHASE3B_VERIFICATION.md](docs/PHASE3B_VERIFICATION.md); los conteos anteriores son evidencia histórica de implementación.
+
+Pruebas adicionales reproducibles: `tests/sql/phase3b-audit.sql` ejecuta 72 pares de estados/roles, conservación de autorizaciones cero, errores, metadatos de pago y auditoría con ROLLBACK. `tests/phase3b-real.mjs` registra seis números concurrentes y la matriz directa de cinco tablas/cuatro roles, además del flujo UI. Los resúmenes y capturas se escriben en `test-results/` ignorado; los tests reales toleran hasta 30 segundos de latencia antes de declarar un fallo de UI. No cambian contraseñas ni configuración Auth.

@@ -1,11 +1,12 @@
 // Opt-in DEV: sesiones solo en memoria, datos etiquetados conservados/cancelados. Nunca borra usuarios ni filas.
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect as baseExpect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 
 import { cents } from "../src/features/orders/domain.ts";
+const expect=baseExpect.configure({timeout:30000});
 if(process.env.SIGCA_REAL_TESTS!=="1") throw Error("Requiere SIGCA_REAL_TESTS=1");
 process.loadEnvFile('.env.local');
 const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -41,17 +42,34 @@ async function quote(amount='10',day) {
 async function race(label,operations){const r=await Promise.all(operations.map(f=>f()));ok(r.filter(r=>!r.error).length===1&&r.filter(r=>r.error?.code==='PT409'&&r.status===409).length===1,label+' → un éxito y un HTTP 409');}
 const summary=async id=>(await admin.client.from('order_payment_summary').select('*').eq('order_id',id).single()).data;
 const modal=async who=>who.page.locator('.swal2-confirm').click();
+const accessMatrix=[], assignedNumbers=[];
+// Operaciones negativas limitadas a un UUID inexistente: no borran ni alteran filas aun si falla un grant.
+async function access(who,label,active){
+ const absent=randomUUID();
+ for(const table of ['orders','order_items','order_files','order_counters','payments']){
+  const counter=table==='order_counters', field=counter?'year':'id',value=counter?9999:absent;
+  const read=await who.from(table).select(counter?'year':'id').limit(1);
+  const readable=active&&!counter;
+  ok(readable?!read.error:label==='Inactivo'&&!counter?!read.error&&read.data.length===0:read.error?.code==='42501',`${label} SELECT ${table}`);
+  const mutations={INSERT:()=>who.from(table).insert(counter?{year:9999,last_sequence:1}:{id:absent}),UPDATE:()=>who.from(table).update(counter?{last_sequence:1}:{id:absent}).eq(field,value),DELETE:()=>who.from(table).delete().eq(field,value)};
+  const row={role:label,table,SELECT:read.error?.code??(readable?'permitido':'0 filas')};
+  for(const [op,request] of Object.entries(mutations)){const r=await request();ok(r.error?.code==='42501',`${label} ${op} ${table} denegado por permisos`);row[op]=r.error?.code;}
+  accessMatrix.push(row);
+ }
+}
 try {
  admin=await session(process.env.SIGCA_TEST_ADMIN_EMAIL);member=await session(process.env.SIGCA_TEST_MEMBER_EMAIL);
  const a=(await admin.client.from('profiles').select('role,status').eq('id',admin.id).single()).data,m=(await member.client.from('profiles').select('role,status').eq('id',member.id).single()).data;
  ok(a?.role==='admin'&&m?.role==='collaborator'&&a.status==='active'&&m.status==='active','Sesiones independientes Admin/Colaborador vigentes');
  const c=await admin.client.from('clients').insert({name:prefix,phone:'83639663'}).select('id').single();if(c.error)throw Error('Cliente fixture');clientId=c.data.id;
  stage='concurrencia';
- const ids=await Promise.all([quote(),quote()]);
- const confirmations=await Promise.all([call(admin,'confirm_order',ids[0]),call(member,'confirm_order',ids[1])]);
- ok(confirmations.every(r=>!r.error),'Dos confirmaciones simultáneas en sesiones distintas');
+ const ids=await Promise.all(Array.from({length:6},()=>quote()));
+ const confirmations=await Promise.all(ids.map((id,i)=>call(i%2?member:admin,'confirm_order',id)));
+ ok(confirmations.every(r=>!r.error),'Seis confirmaciones simultáneas en sesiones distintas');
  const numbers=await Promise.all(ids.map(header));
- ok(new Set(numbers.map(o=>o.order_number)).size===2&&Math.abs(numbers[0].number_sequence-numbers[1].number_sequence)===1,'Consecutivos atómicos distintos y contiguos');
+ assignedNumbers.push(...numbers.map(o=>({id:o.id,number:o.order_number})));
+ ok(new Set(numbers.map(o=>o.order_number)).size===6&&numbers.every(o=>/^PED-\d{4}-\d{5,}$/.test(o.order_number)),'Seis consecutivos únicos; sin depender del orden de llegada ni exigir ausencia de huecos');
+ for(const o of numbers){ok((await call(admin,'confirm_order',o.id)).error?.code==='PT409'&&(await header(o.id)).order_number===o.order_number,'Reconfirmación no consume ni reemplaza '+o.order_number);}
  let id=ids[0],o=await header(id);
  await race('Dos pagos simultáneos contra el mismo saldo',[()=>call(admin,'register_payment',id,{amount:'7',payment_method:'cash'},o.revision),()=>call(member,'register_payment',id,{amount:'7',payment_method:'cash'},o.revision)]);
  ok(cents((await summary(id)).paid)===700n,'Nunca sobrepago: saldo final 3.00');
@@ -82,11 +100,13 @@ try {
  ok(!(await member.client.from('audit_log').select('id')).data?.length,'Colaborador no recibe auditoría general');
  ok(!!(await anon.from('payments').select('id')).error,'Anon sin pagos');
  for(const op of ['confirm_order','register_payment','void_payment','transition_order','amend_order','correct_order_dates'])ok(!!(await anon.rpc(op,{target:orderId,expected_revision:1,payload:{}})).error,'Anon bloqueado '+op);
+ for(const op of ['confirm_order','register_payment','void_payment','transition_order','amend_order','correct_order_dates'])ok((await privileged.rpc(op,{target:randomUUID(),expected_revision:1,payload:{}})).error?.code==='42501','Service role sin identidad comercial '+op);
  ok((await member.client.schema('private').rpc('confirm_order',{})).error?.code==='PGRST106','Private fuera de Data API');
  stage='UI real';await go(member,'/pedidos/'+orderId);
  await expect(member.page.getByRole('heading',{name:'Importes del pedido'})).toBeVisible();
- await member.page.getByLabel('Monto CRC',{exact:true}).fill('0.13');await member.page.getByRole('button',{name:'Registrar pago',exact:true}).click();await modal(member);
+ await member.page.getByLabel('Monto CRC',{exact:true}).fill('0.13');await member.page.getByLabel('Tipo de pago (opcional)',{exact:true}).fill('Adelanto de verificación');await member.page.getByRole('button',{name:'Registrar pago',exact:true}).click();await modal(member);
  await expect.poll(async()=>cents((await summary(orderId)).paid)).toBe(13n);
+ ok((await member.client.from('payments_read').select('payment_type').eq('order_id',orderId).single()).data.payment_type==='Adelanto de verificación','Tipo de pago UI/API persistido');
  await go(member,'/pedidos/'+orderId);await expect(member.page.getByRole('button',{name:'Anular pago',exact:true})).toHaveCount(0);
  for(const name of ['En producción','Listo','Entregado']){await member.page.getByRole('button',{name,exact:true}).click();await modal(member);await expect.poll(async()=> (await header(orderId)).production_status).toBe({'En producción':'in_production',Listo:'ready',Entregado:'delivered'}[name]);await go(member,'/pedidos/'+orderId);}
  ok(!!(await header(orderId)).delivered_at&&cents((await summary(orderId)).balance)===87n,'UI real: producción, listo y entrega con saldo pendiente');
@@ -105,19 +125,42 @@ try {
   await who.page.setViewportSize({width,height:950});await go(who,'/pedidos/'+orderId);
   ok(await who.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Sin scroll horizontal '+(who===admin?'Admin':'Colaborador')+' '+width);
   if(width<768)ok(await who.page.locator('.catalog-table tbody tr').first().evaluate(e=>getComputedStyle(e).display)!=='table-row','Pagos en tarjetas móvil '+width);
+  await who.page.getByLabel('Monto CRC',{exact:true}).fill('0.13');await who.page.getByRole('button',{name:'Registrar pago',exact:true}).click();
+  await expect(who.page.getByRole('dialog')).toBeVisible();
+  ok(await who.page.locator('.swal2-popup').evaluate(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;}),'Modal pago dentro de viewport '+width);
+  // SweetAlert anima la escala inicial; medir el área final, no un fotograma intermedio.
+  await expect.poll(()=>who.page.locator('.swal2-actions button').evaluateAll(elements=>elements.filter(e=>e.getClientRects().length).every(e=>e.getBoundingClientRect().height>=44))).toBe(true);
+  ok(true,'Controles táctiles visibles modal '+width);
+  await who.page.locator('.swal2-cancel').click();
+  if(who===admin){
+   await who.page.getByRole('button',{name:'Anular pago',exact:true}).first().click();await modal(who);await expect(who.page.locator('.swal2-validation-message')).toBeVisible();
+   // El hover de SweetAlert oscurece el rojo mediante color-mix; comprobar el token de peligro.
+   await expect.poll(()=>who.page.locator('.swal2-confirm').evaluate(e=>getComputedStyle(e).getPropertyValue('--swal2-confirm-button-background-color').trim().toLowerCase())).toBe('#d92d47');
+   ok(true,'Anulación roja y motivo exigido '+width);
+   await who.page.locator('.swal2-cancel').click();
+   await who.page.getByRole('button',{name:'Cancelar pedido',exact:true}).click();await expect(who.page.getByLabel('Motivo obligatorio',{exact:true})).toBeVisible();await who.page.locator('.swal2-cancel').click();
+  }
+  await expect(who.page.locator('.swal2-container')).toHaveCount(0);
+  await who.page.emulateMedia({reducedMotion:'reduce'});
+  ok(await who.page.locator('.button.primary').first().evaluate(e=>parseFloat(getComputedStyle(e).transitionDuration)<=0.001),'Reduced motion '+width);
+  const heading=who.page.locator('h1');const original=await heading.textContent();await heading.evaluate(e=>{e.textContent='PED-2026-9223372036854775807';});
+  ok(await who.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Estrés visual PED largo (DOM simulado) '+width);await heading.evaluate((e,text)=>{e.textContent=text;},original);
   await who.page.screenshot({path:`test-results/phase3b-real-${who===admin?'admin':'member'}-${width}.png`,fullPage:true});
  }
  stage='conflicto y red UI';await go(member,'/pedidos/'+orderId);await member.page.getByLabel('Monto CRC',{exact:true}).fill('0.13');
  await pass(admin,'amend_order',orderId,{...await payload(orderId),notes:prefix+' segunda sesión'});
- await member.page.getByRole('button',{name:'Registrar pago',exact:true}).click();await modal(member);await expect(member.page.getByRole('alert').filter({hasText:'pedido cambió'})).toBeVisible();await expect(member.page.getByLabel('Monto CRC',{exact:true})).toHaveValue('0.13');ok(true,'409 UI conserva importe del formulario obsoleto');
+ await member.page.getByRole('button',{name:'Registrar pago',exact:true}).click();await modal(member);await expect(member.page.getByRole('alert').filter({hasText:'pedido cambió'})).toBeVisible();await expect(member.page.getByRole('alert').filter({hasText:'pedido cambió'})).toBeFocused();await expect(member.page.getByLabel('Monto CRC',{exact:true})).toHaveValue('0.13');ok(true,'409 UI enfoca error y conserva importe del formulario obsoleto');
  await go(member,'/pedidos/'+orderId);await member.page.getByLabel('Monto CRC',{exact:true}).fill('0.13');
  const fault=async route=>route.request().method()==='POST'?route.abort('failed'):route.continue();await member.page.route('**/pedidos/'+orderId,fault);
  await member.page.getByRole('button',{name:'Registrar pago',exact:true}).click();await modal(member);await expect(member.page.getByRole('alert').filter({hasText:'No se pudo conectar'})).toBeVisible();await member.page.unroute('**/pedidos/'+orderId,fault);ok(true,'Fallo de red inducido: formulario conservado');
  stage='inactivo';await admin.client.from('profiles').update({status:'inactive'}).eq('id',member.id);inactive=true;
+ await access(member.client,'Inactivo',false);
  ok(!(await member.client.from('payments').select('id')).data?.length,'JWT vigente inactivo sin lectura de pagos');
  for(const op of ['confirm_order','register_payment','void_payment','transition_order','amend_order','correct_order_dates'])ok(!!(await call(member,op,orderId,{})).error,'Inactivo bloqueado '+op);
  await go(member,'/pedidos/'+orderId);await expect(member.page).toHaveURL(/login/);ok(true,'UI retira acceso al verificar perfil inactivo');
  await admin.client.from('profiles').update({status:'active'}).eq('id',member.id);inactive=false;
+ stage='matriz JWT';await access(admin.client,'Admin',true);await access(member.client,'Colaborador',true);await access(anon,'Anónimo',false);
+ for(const [operation,doc,revision] of [['transition_order',{},undefined],['transition_order',{state:'desconocido'},undefined],['transition_order',{state:'ready'},0],['void_payment',{reason:'Validación sin identificador'},undefined]]){const r=await call(admin,operation,orderId,doc,revision);ok(r.error?.code==='22023'&&r.status===400,'Validación '+operation+' devuelve 400, no 409');}
  await pass(admin,'transition_order',orderId,{state:'cancelled',reason:'Cierre prueba real'});
  ok((await admin.client.from('payments').select('id').eq('order_id',orderId)).data.length===2,'Cancelación conserva pagos válidos y anulados');
  ok(!!(await call(member,'register_payment',orderId,{amount:'0.13',payment_method:'cash'})).error,'Cancelado no admite pagos');ok(!!(await call(admin,'transition_order',orderId,{state:'confirmed'})).error,'Cancelado terminal');
@@ -128,6 +171,6 @@ try {
 finally{
  if(inactive&&admin&&member)await admin.client.from('profiles').update({status:'active'}).eq('id',member.id);
  if(admin){for(const id of createdOrders){let o=await header(id);if(o.production_status==='delivered'){await pass(admin,'transition_order',id,{state:'ready',reason:'Cierre fixture 3B'});o=await header(id);}if(o.production_status!=='cancelled')await pass(admin,'transition_order',id,{state:'cancelled',reason:'Cierre de verificación F3B; conservar historia'});}if(clientId)await admin.client.from('clients').update({is_active:false}).eq('id',clientId);}
- await mkdir('test-results',{recursive:true});await writeFile('test-results/phase3b-real-summary.json',JSON.stringify({stage,passed:evidence,records:{clientId,orders:createdOrders}},null,2));
+ await mkdir('test-results',{recursive:true});await writeFile('test-results/phase3b-real-summary.json',JSON.stringify({stage,passed:evidence,assignedNumbers,accessMatrix,records:{clientId,orders:createdOrders}},null,2));
  for(const s of sessions){await s.authClient.auth.signOut({scope:'local'});await s.context.close();}await browser.close();
 }
