@@ -1,0 +1,58 @@
+"use client";
+import Link from "next/link";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Save, Search, Ban, Upload } from "lucide-react";
+import { toast } from "sonner";
+import { registerExpense, editExpenseNotes, voidExpense, previewExpenseRate, expenseOrderOptions, expenseLineOptions, type ExpenseResult } from "@/features/expenses/actions";
+import { uploadExpenseFile } from "@/features/expenses/files";
+import { type Expense, type ExpenseCategory, type ExpenseRate, type ExpenseFile, fallbackWarning } from "@/features/expenses/domain";
+import { cents, businessDate } from "@/features/orders/domain";
+import { paymentMethods } from "@/features/manual-income/domain";
+
+export function ExpenseForm({ id, admin, categories = [], expense, files = [] }: {id:string;admin:boolean;categories?:ExpenseCategory[];expense?:Expense;files?:ExpenseFile[]}) {
+  const router=useRouter(); const [pending,start]=useTransition(); const [error,setError]=useState(""); const errorRef=useRef<HTMLParagraphElement>(null);
+  const [currency,setCurrency]=useState("CRC"); const [date,setDate]=useState(""); const [rate,setRate]=useState<ExpenseRate|null|undefined>();
+  const [search,setSearch]=useState(""); const [orders,setOrders]=useState<{id:string;order_number:string|null;order_date:string}[]>([]);
+  const [order,setOrder]=useState(""); const [lines,setLines]=useState<{id:string;product_name_snapshot:string}[]>([]);
+  const historical=!!date && date.slice(0,10)<businessDate();
+  useEffect(()=>{if(error)errorRef.current?.focus();},[error]);
+  function run(action:()=>Promise<ExpenseResult>, label:string) {
+    setError("");start(async()=>{try { const result=await action();if(result.error){setError(result.error);return;}toast.success(label);router.replace(`/gastos/${id}`);router.refresh(); }catch{setError("No se pudo conectar. Conservamos tus datos; consulta el gasto antes de reintentar.");}});
+  }
+  return <div className="quote-form" aria-busy={pending}>
+    {error && <p className="message error" role="alert" tabIndex={-1} ref={errorRef}>{error}</p>}
+    {!expense ? <form className="panel" onSubmit={event=>{
+      event.preventDefault();const data=new FormData(event.currentTarget);const value=(key:string)=>String(data.get(key)??"");
+      try {if(cents(value("amount"))<=BigInt(0))throw Error();}catch{setError("Usa un monto positivo con máximo dos decimales.");return;}
+      const payload=Object.fromEntries(["category_id","amount","description","notes","supplier","payment_method","order_item_id","historical_rate","rate_source","rate_reason"].map(key=>[key,value(key)]));
+      run(()=>registerExpense(id,{...payload,currency,order_id:order,expense_date:date?`${date}-06:00`:""}),"Gasto registrado");
+    }}>
+      <h2>Registrar gasto</h2><p className="muted">Los importes, la fecha, la categoría y los vínculos se conservan. Para corregirlos, Administración debe anular el gasto y registrar uno nuevo.</p>
+      <fieldset className="quote-fields" disabled={pending}>
+        <label>Categoría<select name="category_id" required><option value="">Selecciona una categoría</option>{categories.filter(c=>c.is_active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+        <label>Moneda<select value={currency} onChange={e=>{setCurrency(e.target.value);setRate(undefined);}}><option value="CRC">Colones · CRC</option><option value="USD">Dólares · USD</option></select></label>
+        <label>Monto original<input name="amount" required inputMode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" maxLength={100} placeholder="0.00"/></label>
+        {admin ? <label>Fecha efectiva · Costa Rica<input type="datetime-local" value={date} onChange={e=>{setDate(e.target.value);setRate(undefined);}}/><small>Vacía: hora actual. Históricos permitidos; nunca fechas futuras.</small></label> : <p className="muted">Fecha efectiva: hora actual de Costa Rica al guardar.</p>}
+        {currency==="USD" && <div className="quote-wide form-stack"><button type="button" className="button secondary" onClick={()=>{setError("");start(async()=>{try{const result=await previewExpenseRate(date?date.slice(0,10):businessDate());if(result.error)setError(result.error);else setRate(result.rate);}catch{setError("No se pudo consultar la tasa.");}});}}>Consultar tasa aplicable</button>
+          {rate ? <><p className="break-word">Tasa de venta: {rate.rate} CRC/USD · fecha real {rate.date} · {rate.source}</p>{rate.fallback && <p className="message" role="status">{fallbackWarning}</p>}</> : rate===null ? <p className="message">No hay tasa válida para esta fecha. {admin&&historical?"Puedes aportar la referencia histórica faltante con motivo.":"El gasto USD no se registrará sin una referencia válida."}</p> : <p className="muted">Al guardar, el servidor comprobará la tasa aplicable. Puedes consultarla antes.</p>}
+          {admin&&historical&&rate===null && <div className="quote-fields"><label>Tasa histórica faltante<input name="historical_rate" required inputMode="decimal" pattern="[0-9]+([.][0-9]+)?" maxLength={100}/></label><label>Fuente histórica<input name="rate_source" required maxLength={300}/></label><label className="quote-wide">Motivo del aporte<textarea name="rate_reason" required maxLength={1000}/></label></div>}
+        </div>}
+        <label>Método (opcional)<select name="payment_method"><option value="">Sin especificar</option>{Object.entries(paymentMethods).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+        <label>Proveedor (opcional)<input name="supplier" maxLength={300}/></label>
+        <label className="quote-wide">Descripción<textarea name="description" required maxLength={3000} rows={3}/></label>
+        <label className="quote-wide">Notas (opcional)<textarea name="notes" maxLength={3000} rows={2}/></label>
+        <div className="quote-wide form-stack"><h3>Vínculo opcional con un pedido</h3><label>Buscar por número PED o UUID<input value={search} onChange={e=>setSearch(e.target.value)} maxLength={100}/></label><button type="button" className="button secondary" onClick={()=>start(async()=>{try{const result=await expenseOrderOptions(search);if(result.error)setError(result.error);else setOrders(result.orders??[]);}catch{setError("No se pudieron consultar los pedidos.");}})}><Search size={18}/>Buscar pedidos</button><small>Se muestran hasta 25 coincidencias. Usa el número o UUID exacto para acotar.</small>
+          <label>Pedido<select value={order} onChange={e=>{const selected=e.target.value;setOrder(selected);setLines([]);if(selected)start(async()=>{try{const result=await expenseLineOptions(selected);if(result.error)setError(result.error);else setLines(result.lines??[]);}catch{setError("No se pudieron consultar las líneas.");}});}}><option value="">Sin pedido</option>{orders.map(o=><option key={o.id} value={o.id}>{o.order_number??`Cotización ${o.id}`} · {o.order_date}</option>)}</select></label>
+          {order&&<label>Línea (opcional)<select key={order} name="order_item_id"><option value="">Todo el pedido</option>{lines.map(line=><option key={line.id} value={line.id}>{line.product_name_snapshot}</option>)}</select></label>}
+        </div>
+        <button className="button primary"><Save size={18}/>{pending?"Guardando…":"Registrar gasto"}</button>
+      </fieldset>
+    </form> : expense.status==="valid" && <>
+      <form className="panel" onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);run(()=>editExpenseNotes(id,expense.revision,String(data.get("description")??""),String(data.get("notes")??"")),"Descripción y notas guardadas");}}><h2>Descripción y notas</h2><fieldset className="quote-fields" disabled={pending}><label className="quote-wide">Descripción<textarea name="description" required maxLength={3000} defaultValue={expense.description}/></label><label className="quote-wide">Notas<textarea name="notes" maxLength={3000} defaultValue={expense.notes??""}/></label><button className="button primary"><Save size={18}/>Guardar notas</button></fieldset></form>
+      <form className="panel" onSubmit={async event=>{event.preventDefault();const form=event.currentTarget;const data=new FormData(form);if(data.get("replaces")){const Swal=(await import("sweetalert2")).default;const answer=await Swal.fire({title:"Reemplazar comprobante",text:"La versión anterior se conservará en el historial privado.",showCancelButton:true,confirmButtonText:"Conservar y reemplazar",cancelButtonText:"Volver",confirmButtonColor:"#DD0675"});if(!answer.isConfirmed)return;}run(async()=>{const result=await uploadExpenseFile(id,expense.revision,data);if(result.success)form.reset();return result;},"Comprobante guardado");}}><h2>Agregar comprobante privado</h2><fieldset className="quote-fields" disabled={pending}><label>Imagen<input name="image" type="file" accept="image/jpeg,image/png,image/webp" required/></label><label>Descripción<input name="caption" maxLength={300}/></label><label>Versión que reemplaza<select name="replaces"><option value="">Nuevo comprobante</option>{files.filter(f=>f.is_active).map(f=><option key={f.id} value={f.id}>{f.caption||f.id}</option>)}</select></label><p className="muted">JPEG, PNG o WebP sin animación. Máximo 5 MiB y 25 megapíxeles. La versión anterior se conserva.</p><button className="button primary"><Upload size={18}/>Guardar comprobante</button></fieldset></form>
+      {admin&&<button className="button secondary danger-action" disabled={pending} onClick={async()=>{const Swal=(await import("sweetalert2")).default;const answer=await Swal.fire({title:"Anular gasto",text:"Se conservarán el gasto, su tasa y todos los comprobantes. No se genera devolución.",input:"textarea",inputLabel:"Motivo obligatorio",inputAttributes:{maxlength:"1000"},inputValidator:(value:string)=>!value.trim()?"Escribe el motivo":undefined,showCancelButton:true,confirmButtonText:"Anular gasto",cancelButtonText:"Volver",confirmButtonColor:"#D92D47"});if(answer.isConfirmed)run(()=>voidExpense(id,expense.revision,answer.value),"Gasto anulado; historial conservado");}}><Ban size={18}/>Anular gasto</button>}
+    </>}
+    {error && <Link className="button secondary" href={`/gastos/${id}`}>Consultar estado del gasto</Link>}
+  </div>;
+}

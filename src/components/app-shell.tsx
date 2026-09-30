@@ -19,6 +19,7 @@ import {
   Shapes,
   Settings,
   Wallet,
+  Receipt,
 } from "lucide-react";
 import { Brand } from "./brand";
 import { logout } from "@/features/auth/actions";
@@ -104,6 +105,7 @@ export function AppShell({
         [Package, "Productos", "/productos"],
         [Layers, "Materiales", "/materiales"],
         [Shapes, "Categorías", "/categorias"],
+        [Receipt, role === "admin" ? "Gastos" : "Mis gastos", "/gastos"],
       ].map(([Icon, label, href]) => {
         const ItemIcon = Icon as typeof House;
         return (

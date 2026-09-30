@@ -316,3 +316,17 @@ Ver [matriz de 3C](docs/PHASE3C_VERIFICATION.md). Pruebas: comandos npm habitual
 A51 permanece pendiente antes de producción. El INFO de `order_counters` sigue aceptado como aislamiento intencional, sin nuevos grants ni policies.
 
 Validación 3C: 20 pruebas locales, 21 E2E simulados, 123 comprobaciones sobre DEV para ingresos y 219 de regresión 3B. Lint/typecheck/build correctos; npm audit de producción sin vulnerabilidades. Las simulaciones de errores se identifican en la matriz y no sustituyen las pruebas RLS reales.
+
+## Fase 3D — Gastos y comprobantes privados
+
+Alcance autorizado posterior a 3C: Gastos/Mis gastos, categorías Admin, importes CRC/USD, referencias históricas de cambio, descripción/notas, anulación y comprobantes privados versionados. Desde un pedido puede consultarse su listado de gastos autorizado, sin calcular rentabilidad ni costo final. No autoriza 3E ni fases posteriores.
+
+Para USD de hoy se usa la referencia válida de hoy o, ante indisponibilidad, la última válida persistida con fecha real y advertencia. Sin ninguna referencia, se bloquea USD. Históricos usan fecha exacta: solo Admin puede aportar una referencia faltante, con motivo y auditoría. La evidencia del gasto no cambia cuando se actualiza la caché. Colaborador nunca selecciona tasas.
+
+Migraciones `20260930070939_phase3d_expenses.sql` y `20260930173242_phase3d_private_receipt_delivery.sql`, aplicadas únicamente a DEV `pysgfnwsycgoneaecgcl` tras pruebas y dry-run. No requiere nuevas dependencias, variables ni configuración manual de Storage. Recibos: JPEG/PNG/WebP hasta 5 MiB/25 MP, recodificados y privados; cada reemplazo conserva la versión anterior. La descarga pasa por servidor con perfil vigente y RLS del gasto; la descarga directa de Storage está bloqueada y las respuestas no se almacenan en caché.
+
+Estado detallado y limitaciones en [PHASE3D_VERIFICATION.md](docs/PHASE3D_VERIFICATION.md). Pruebas reales: `node tests/phase3d-real.mjs` con servidor local de producción y variables de cuentas DEV descritas arriba. Conserva fixtures etiquetados `VERIFICACION-F3D`, los anula y desactiva su categoría; nunca elimina usuarios, gastos ni comprobantes. Inactiva/reactiva brevemente al Colaborador; no ejecutar en paralelo con las pruebas reales de 3B/3C. SQL verificable y huellas en `tests/sql/phase3d-*.sql`; el archivo `phase3d-rates-storage-local.sql` es exclusivamente para base local vacía. Los E2E usan fixture simulado. Evidencias y capturas permanecen ignoradas.
+
+Control adicional de secretos: `node tests/verify-secrets.mjs`, después de build, comprueba claves privadas locales contra archivos versionables y assets cliente sin imprimirlas. A51 pendiente de producción y aislamiento de order_counters permanecen sin cambios.
+
+Validación 3D: 23 pruebas locales, 22 E2E simulados, 150 comprobaciones UI/API en DEV (incluyen dos casos de red inducida expresamente identificados) y 31 de regresión real 3B/3C. Esquema local/remoto equivalente y sin migraciones pendientes. Next.js/eslint-config-next actualizados al parche 16.3.6 por aviso de seguridad; npm audit de producción sin vulnerabilidades. No se agregaron librerías funcionales. Para repetir la regresión: `node tests/phase3d-regression-real.mjs`, con el mismo servidor/variables DEV; conserva registros, pagos y auditoría. No hay pasos manuales nuevos ni decisiones funcionales pendientes de 3D; A51 sigue pendiente antes de producción.

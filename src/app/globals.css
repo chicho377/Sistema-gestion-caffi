@@ -1155,3 +1155,9 @@ details[open] > summary {
 .button.danger-action{border-color:var(--color-danger);color:var(--color-danger)}
 .order-actions .danger-action{margin-top:12px;flex-basis:100%}
 @media(min-width:768px){.order-actions .danger-action{margin-top:0;margin-left:12px;flex-basis:auto}}
+
+.expense-category-form .check-label { display:flex; align-items:center; gap:12px; min-height:44px; }
+.expense-category-form .check-label input { width:22px; height:22px; min-height:22px; flex:none; accent-color:var(--color-primary, #DD0675); }
+
+.expense-status { white-space: nowrap; }
+.expense-status[data-status="voided"] { color: var(--color-danger); border-color: var(--color-danger); }

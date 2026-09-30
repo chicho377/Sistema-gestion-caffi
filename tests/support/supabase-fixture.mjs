@@ -42,6 +42,7 @@ const session = (key) => ({
 let revoked = new Set();
 let catalogFailure = false;
 let catalogDelay = 0;
+let expensePreview = null;
 const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
   res.setHeader(
@@ -69,11 +70,16 @@ const server = http.createServer(async (req, res) => {
     revoked = new Set();
     catalogFailure = false;
     catalogDelay = 0;
+    expensePreview = null;
     return reply(200, {});
   }
   if (url.pathname === "/test/catalog-state") {
     catalogFailure = body.fail === true;
     catalogDelay = Math.min(3000, Math.max(0, Number(body.delay) || 0));
+    return reply(200, {});
+  }
+  if (url.pathname === "/test/expense-preview") {
+    expensePreview = body.expense ?? null;
     return reply(200, {});
   }
   if (url.pathname === "/test/revoke") {
@@ -137,6 +143,11 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname.startsWith("/rest/v1/")) {
     if (!key || revoked.has(key)) return reply(403, { message: "Forbidden" });
     const table = url.pathname.split("/").at(-1);
+    if (expensePreview) {
+      if (table === "expenses_read") return reply(200, expensePreview);
+      if (table === "expense_categories") return reply(200, { name: "Materiales" });
+      if (table === "expense_files") return reply(200, []);
+    }
     if (table === "settings")
       return reply(
         200,
@@ -170,6 +181,8 @@ const server = http.createServer(async (req, res) => {
       [
         "quotes_read",
         "manual_income_read",
+        "expenses_read",
+        "expense_categories",
         "quote_products_read",
         "clients",
         "products",
