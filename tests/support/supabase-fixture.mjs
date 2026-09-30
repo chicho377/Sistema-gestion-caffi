@@ -169,6 +169,7 @@ const server = http.createServer(async (req, res) => {
     if (
       [
         "quotes_read",
+        "manual_income_read",
         "quote_products_read",
         "clients",
         "products",

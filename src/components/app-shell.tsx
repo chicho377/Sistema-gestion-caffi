@@ -18,6 +18,7 @@ import {
   Layers,
   Shapes,
   Settings,
+  Wallet,
 } from "lucide-react";
 import { Brand } from "./brand";
 import { logout } from "@/features/auth/actions";
@@ -128,6 +129,7 @@ export function AppShell({
       {role === "admin" && (
         <>
           <span className="nav-caption">ADMINISTRACIÓN</span>
+          <Link href="/ingresos-manuales" className={path.startsWith("/ingresos-manuales") ? "active" : ""} onClick={() => setOpen(false)}><Wallet size={20}/>Ingresos manuales</Link>
           <Link
             href="/configuracion"
             className={path === "/configuracion" ? "active" : ""}

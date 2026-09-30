@@ -6,6 +6,7 @@ import {
   Layers,
   Shapes,
   Settings,
+  Wallet,
 } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { logout } from "@/features/auth/actions";
@@ -40,6 +41,9 @@ export default async function More() {
           <Shapes size={20} />
           Categorías
         </Link>
+        {profile.role === "admin" && (
+          <Link className="button secondary" href="/ingresos-manuales"><Wallet size={20}/>Ingresos manuales</Link>
+        )}
         {profile.role === "admin" && (
           <Link className="button secondary" href="/configuracion">
             <Settings size={20} />

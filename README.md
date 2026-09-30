@@ -302,3 +302,17 @@ Revisión final de 3B: ZT-01 resuelto mediante 20260924032507_phase3b_zero_autho
 Auditoría posterior al checkpoint `f1c2e77`: `20260924034005_phase3b_audit_validation.sql` añade el tipo descriptivo de pago previsto por RF-PAG-01 y diferencia entradas inválidas (400), permisos (403) y conflictos (409). No modifica pagos anteriores ni reglas de negocio. La interfaz distingue cancelación/anulación con rojo y texto explícito, enfoca errores y valida el porcentaje también en cliente. Resultados actualizados, trazabilidad de las CHECKs y matriz JWT en la sección «Auditoría de cierre» de [PHASE3B_VERIFICATION.md](docs/PHASE3B_VERIFICATION.md); los conteos anteriores son evidencia histórica de implementación.
 
 Pruebas adicionales reproducibles: `tests/sql/phase3b-audit.sql` ejecuta 72 pares de estados/roles, conservación de autorizaciones cero, errores, metadatos de pago y auditoría con ROLLBACK. `tests/phase3b-real.mjs` registra seis números concurrentes y la matriz directa de cinco tablas/cuatro roles, además del flujo UI. Los resúmenes y capturas se escriben en `test-results/` ignorado; los tests reales toleran hasta 30 segundos de latencia antes de declarar un fallo de UI. No cambian contraseñas ni configuración Auth.
+
+## Fase 3C — Ingresos manuales
+
+La autorización posterior al cierre de 3B permite exclusivamente este módulo; no autoriza 3D/3E. En **Más → Ingresos manuales** (o Administración en escritorio), un Admin activo puede registrar, consultar, buscar/filtrar y anular ingresos independientes. Los pagos de pedidos continúan únicamente en Pedidos; no se copian ni enlazan a este módulo.
+
+CRC positivo con máximo dos decimales; fecha actual por defecto o histórica en hora Costa Rica, nunca futura. Clasificaciones opcionales ya aprobadas: venta independiente de productos, tarjetas, stickers y otro. Importe, fecha, clasificación, método y descripción quedan inmutables. Para corregir: anular con motivo y registrar un ingreso nuevo. El original y su auditoría permanecen.
+
+Migración nueva `20260929201704_phase3c_manual_income.sql`, aplicada solo a DEV `pysgfnwsycgoneaecgcl` tras pruebas y dry-run. Añade `manual_income`, vista con seguridad del invocador, dos RPC transaccionales y triggers de integridad/auditoría. Ningún cambio a tablas, funciones, permisos o reglas de 3B. No necesita dependencias, variables ni configuración manual adicionales.
+
+Ver [matriz de 3C](docs/PHASE3C_VERIFICATION.md). Pruebas: comandos npm habituales, `tests/sql/phase3c-verification.sql` (transacción revertida), `tests/phase3c-real.mjs` (JWT/UI reales, con las variables de prueba DEV descritas arriba). El test real conserva ingresos etiquetados `VERIFICACION-F3C`, los anula al finalizar y no borra datos. Inactiva/reactiva brevemente al Colaborador de prueba. Sus sesiones se mantienen solo en memoria; no cambia contraseñas ni envía correos. Ejecutar con servidor local conectado a DEV, separado del E2E simulado. Los resúmenes/capturas permanecen ignorados en `test-results/`.
+
+A51 permanece pendiente antes de producción. El INFO de `order_counters` sigue aceptado como aislamiento intencional, sin nuevos grants ni policies.
+
+Validación 3C: 20 pruebas locales, 21 E2E simulados, 123 comprobaciones sobre DEV para ingresos y 219 de regresión 3B. Lint/typecheck/build correctos; npm audit de producción sin vulnerabilidades. Las simulaciones de errores se identifican en la matriz y no sustituyen las pruebas RLS reales.
