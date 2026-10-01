@@ -16,6 +16,7 @@ test('3D: gastos, moneda, fallback, permisos y conservación de originales',asyn
   await db.exec(await readFile('tests/sql/phase3d-verification.sql','utf8'));
   await db.exec(await readFile('tests/sql/phase3d-permissions.sql','utf8'));
   await db.exec(await readFile('tests/sql/phase3d-rates-storage-local.sql','utf8'));
+  await db.exec(await readFile('tests/sql/phase3d-audit.sql','utf8'));
   assert.equal((await db.query('select count(*)::int n from public.expenses')).rows[0].n,0);
   await mkdir('test-results',{recursive:true});
   await writeFile('test-results/phase3d-local-schema.json',JSON.stringify((await db.query(await readFile('tests/sql/phase3d-schema.sql','utf8'))).rows));

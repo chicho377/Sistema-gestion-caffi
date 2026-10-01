@@ -5,6 +5,7 @@ export type Expense = {
   amount: string; currency: "CRC" | "USD"; amount_crc: string; expense_date: string;
   exchange_rate_applied: string | null; exchange_rate_date: string | null; exchange_rate_source: string | null;
   rate_is_fallback: boolean; rate_override_reason: string | null; rate_provided_by: string | null; rate_provided_at: string | null;
+  rate_origin: "not_applicable" | "admin_historical" | "provider";
   description: string; notes: string | null; supplier: string | null; payment_method: string | null;
   status: "valid" | "voided"; is_historical: boolean; created_by: string; updated_by: string;
   voided_by: string | null; voided_at: string | null; void_reason: string | null;

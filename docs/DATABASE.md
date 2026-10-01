@@ -871,3 +871,17 @@ La migración nueva `20260930070939_phase3d_expenses.sql` implementa expense_cat
 
 ### Endurecimiento técnico 3D: revocación de comprobantes
 La prueba real detectó que una descarga directa del SDK podía responder desde CDN después de inactivar al usuario, aunque RLS de metadatos y el endpoint SIGCA ya denegaban acceso. Para asegurar la regla aprobada de inactivo sin acceso, los bytes de expense-receipts se sirven exclusivamente mediante /api/expense-file/[id]: perfil y metadatos con JWT/RLS vigentes, descarga de infraestructura desde servidor y respuesta no-store. La policy directa de Storage se restringe a false mediante ALTER POLICY en una migración nueva, sin DROP ni grants nuevos. Los permisos funcionales Admin/propietario no cambian. Se purga únicamente la caché de los comprobantes previos, sin eliminar ni reemplazar objetos. No se alteran otros buckets ni Auth.
+
+Auditoría de 3D: `expenses_read.rate_origin` es una proyección técnica derivada: CRC → not_applicable; USD con rate_provided_by → admin_historical; demás USD → provider. La referencia libre exchange_rate_source de una tasa manual no determina su origen. Su actor, fecha y motivo siguen siendo evidencia obligatoria e inmutable; no se modifican registros históricos. La UI distingue origen de referencia declarada.
+
+## D-20 — Reclasificación administrativa aprobada (cierre de criterio 10, 3D)
+
+Admin activo puede reclasificar un gasto `valid` mediante operación explícita con motivo obligatorio de 1–1000 caracteres. La categoría destino debe existir, estar activa y ser distinta de la actual. Colaborador no puede reclasificar. Gasto `voided`, revisión obsoleta y UPDATE directo del cliente se rechazan. RPC transaccional con bloqueo de gasto y control de revisión; evento `expense.category_changed` conserva before/after, actor, timestamp y motivo.
+
+Solo cambia category_id y metadatos técnicos de actualización/revisión. Se conservan monto, moneda, tasa y su fecha/procedencia/evidencia, equivalente CRC, expense_date, pedido, línea, creador, created_at y comprobantes. No se recalcula una tasa ni se anula el gasto. Una categoría desactivada posteriormente conserva sus referencias históricas. Para futuros reportes se utilizará la categoría vigente corregida; la auditoría conserva todas las reclasificaciones. Esta decisión completa D-20: clasificación corregible solo por Admin, campos financieros inmutables. No autoriza reportes ni Fase 3E.
+
+### Contrato técnico de reclasificación 3D
+
+`public.reclassify_expense(target, expected_revision, new_category, reason)` delega a `private.reclassify_expense` con search_path vacío. La implementación exige perfil Admin activo antes de acceder al gasto, bloquea perfil/gasto y categoría destino, valida revisión y escribe el evento específico en la misma transacción. `PT409` identifica revisión obsoleta/estado no válido; `22023` datos inválidos; `42501` falta de autorización. Si falla la auditoría, revierte también categoría y revisión.
+
+Admin y Colaborador comparten el rol técnico PostgreSQL authenticated; EXECUTE del wrapper no constituye permiso funcional. La comprobación de rol vigente en BD rechaza toda llamada de Colaborador, y el servidor exige requireAdmin. No se añaden grants DML ni policies de escritura. private no se expone a Data API. La función conserva la auditoría genérica existente y añade expense.category_changed con los snapshots íntegros y el motivo específico.

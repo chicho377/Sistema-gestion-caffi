@@ -65,3 +65,9 @@ export async function expenseLineOptions(order: string) {
   }
   return {lines:rows};
 }
+
+export async function reclassifyExpense(id: string, revision: number, category: string, reason: string) {
+  await requireAdmin();
+  if (!uuid.test(id) || !uuid.test(category) || !reason.trim() || reason.trim().length > 1000) return { error: "Selecciona categoría y motivo válidos." };
+  return invoke("reclassify_expense", { target: id, expected_revision: revision, new_category: category, reason });
+}

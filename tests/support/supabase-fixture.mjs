@@ -145,7 +145,10 @@ const server = http.createServer(async (req, res) => {
     const table = url.pathname.split("/").at(-1);
     if (expensePreview) {
       if (table === "expenses_read") return reply(200, expensePreview);
-      if (table === "expense_categories") return reply(200, { name: "Materiales" });
+      if (table === "expense_categories") {
+        const category = { id: expensePreview.category_id, name: "Materiales", description: null, is_active: true, revision: 1 };
+        return reply(200, req.headers.accept?.includes("vnd.pgrst.object") ? category : [category]);
+      }
       if (table === "expense_files") return reply(200, []);
     }
     if (table === "settings")
