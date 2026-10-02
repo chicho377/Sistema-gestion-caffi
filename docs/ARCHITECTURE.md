@@ -516,3 +516,39 @@ Solo cambia category_id y metadatos técnicos de actualización/revisión. Se co
 El usuario autorizó validar 3A–3D como conjunto y corregir defectos técnicos dentro de reglas aprobadas, sin nuevos módulos ni Fase 4. Esto sustituye las limitaciones temporales de autorización de secciones anteriores. No modifica D-19/D-20/D-21.
 
 La migración 20261001235914_phase3e_private_image_delivery.sql extiende a order-references y catalog-images el aislamiento de bytes aplicado en 3D a expense-receipts. Ambas policies SELECT de Storage quedan USING(false). Los endpoints /api/order-file/[id] y /api/catalog-image/[id] comprueban perfil y metadatos con JWT/RLS vigentes antes de descargar bytes mediante infraestructura exclusiva del servidor, cacheNonce único y fetch no-store. Se conservan permisos funcionales, metadatos, versiones y objetos; no se entregan URLs portadoras ni claves administrativas. Subidas con rutas nuevas, upsert=false y cacheControl=0. Se invalidó únicamente la caché anterior. Evidencia de la reproducción y pruebas en PHASE3E_VERIFICATION.md.
+
+
+## D-22 — Arquitectura de Fase 4 y alcance documental vigente
+
+Fase 3 cerrada para desarrollo. D-22 incorpora B4-01 a B4-14 sin reescribir D-01 a D-21. Esta entrega solo documenta y propone 4A; no autoriza código, migraciones ni cambios remotos. El detalle funcional íntegro está en DECISIONS.md; requisitos trazados en RF-INV-07/13, RF-HOR-13/16 y RF-ENV-06/09.
+
+### Orden aprobado
+
+1. **4A:** inventario base, compras/entradas, promedio ponderado móvil y existencias. Cabecera/líneas de recepción con valoración histórica y vínculo opcional a gasto; no generación financiera automática.
+2. **4B:** consumos, devoluciones y correcciones por compensación. Depende del orden de movimientos y valoración de 4A; no editar historia. Consumos/devoluciones de Colaborador según D-22, costos inaccesibles.
+3. **4C:** sesiones/pausas, varios trabajadores por pedido, una sesión abierta por usuario, tarifa al iniciar, correcciones históricas Admin. Integrar bloqueos de transiciones 3B cuando haya sesiones abiertas; no cierres automáticos.
+4. **4D:** envío único, retiro con recorrido propio, snapshots de dirección/fechas, cancelación terminal y correcciones Admin. expenses como fuente del costo business; no pagos ni gastos automáticos ni entrega silenciosa del pedido.
+5. **4E:** auditoría integral y cierre con evidencia local/simulada/DEV diferenciada.
+
+### Separación de responsabilidades
+
+- Diario inmutable de movimientos como fuente de verdad; saldo y promedio actuales como proyecciones reconstruibles bajo bloqueo transaccional. No FIFO/lotes. Snapshot de unidad desde primer movimiento y bloqueo de edición ordinaria.
+- Cantidad decimal hasta cuatro posiciones; costo unitario derivado hasta ocho; monto final HALF UP a dos. Conversión conserva tasa completa y procedencia histórica; catálogo material_costs nunca revalora movimientos.
+- Cabecera/líneas permiten varios materiales por factura. Referencia opcional expenses sin automatizar desembolso, stock, anulaciones ni compensaciones cruzadas. Identidad de fuentes disponible para Fase 5.
+- Datos operativos separados físicamente de costos/tasas para impedir fugas a Colaborador por SELECT, filtros, vistas, RPC y errores. Admin exclusivo en entradas valoradas y saldos iniciales; Colaborador de 4A solo lectura operativa.
+- Mutación autorizada en servidor/BD, RPC atómica, perfil vigente, bloqueo compartido por material y revisión/idempotencia. Auditoría dentro de la misma transacción. Migraciones nuevas, no editar aplicadas.
+- Cronómetro usa instantes persistidos, segundos netos y tarifa congelada al inicio. Finalizar desde pausa descuenta intervalo abierto; acciones sin conexión no confirmadas. Históricos Admin no solapados, sin tarifa actual implícita.
+- Envíos independientes del estado del pedido; avanzar/despachar/entregar valida D-22 y cualquier acción explícita sobre pedido valida 3B. Dirección snapshot; archivos específicos de envío no añadidos por esta decisión.
+
+Esquema exacto propuesto, algoritmo, seguridad, UI, pruebas y migraciones futuras exclusivamente 4A en [PHASE4A_PREFLIGHT.md](PHASE4A_PREFLIGHT.md). Allí se distinguen precisiones pendientes de propuestas técnicas; no presentarlas como reglas aprobadas. A51, aislamiento de order_counters y observaciones Performance conservan el tratamiento del cierre de Fase 3.
+
+
+## D-22 — Concreciones finales P4A y autorización exclusiva 4A
+
+P4A-01/02/03 resueltas (texto íntegro en DECISIONS.md). Cantidad hasta 4 decimales; costos/promedio internos hasta 8 con HALF UP; importes de entrada/finales hasta 2; solo numeric/decimal. Mantener valor interno CRC hasta 8 decimales como base: valor_nuevo = valor_anterior + total_CRC_entrada; cantidad_nueva = cantidad_anterior + cantidad_entrada; promedio_nuevo = HALF_UP(valor_nuevo/cantidad_nueva,8). No reconstruir valor multiplicando promedio redondeado por cantidad. Costo unitario entrada = HALF_UP(total_CRC/cantidad,8). Residuo privado = total_CRC - cantidad × costo_unitario; evidencia decimal, nunca gasto/ingreso/movimiento ni cambio del original. Rechazar costo positivo que colapse a cero a ocho decimales.
+
+Compra/saldo inicial: cantidad, total original, equivalente CRC y costo unitario estrictamente positivos; cero explícito/implícito y negativos prohibidos. Sin entradas gratuitas en V1. USD reutiliza exactamente contrato de gastos: referencia actual o fallback válido fechado/advertido; sin referencia previa se bloquea; histórico exige tasa exacta o aporte Admin con motivo/actor/timestamp/procedencia inequívoca. Snapshot completo inmutable; catálogo/tasa futura no recalculan historia.
+
+Saldo inicial Admin/motivo, solo si no existe ningún movimiento previo del material; una sola operación inicial. Congelar unidad en servidor/BD; multilínea atómica con bloqueos determinísticos, revisión y UUID estable, sin actualizaciones perdidas. Separar costos de historial operativo. Auditoría completa y vínculo opcional expenses sin automatismos. Alerta stock <= mínimo derivada.
+
+Tras commit documental se autoriza exclusivamente implementar 4A y sus pruebas locales/simuladas/DEV reales, sin 4B–4E ni tag final. Esquema actualizado en PHASE4A_PREFLIGHT.md; evidencia de ejecución se registrará en PHASE4A_VERIFICATION.md. No cambiar D-01 a D-21 ni historia.

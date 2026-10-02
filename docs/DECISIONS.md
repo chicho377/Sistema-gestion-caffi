@@ -305,3 +305,420 @@ La prueba real detectó que una descarga directa del SDK podía responder desde 
 Admin activo puede reclasificar un gasto `valid` mediante operación explícita con motivo obligatorio de 1–1000 caracteres. La categoría destino debe existir, estar activa y ser distinta de la actual. Colaborador no puede reclasificar. Gasto `voided`, revisión obsoleta y UPDATE directo del cliente se rechazan. RPC transaccional con bloqueo de gasto y control de revisión; evento `expense.category_changed` conserva before/after, actor, timestamp y motivo.
 
 Solo cambia category_id y metadatos técnicos de actualización/revisión. Se conservan monto, moneda, tasa y su fecha/procedencia/evidencia, equivalente CRC, expense_date, pedido, línea, creador, created_at y comprobantes. No se recalcula una tasa ni se anula el gasto. Una categoría desactivada posteriormente conserva sus referencias históricas. Para futuros reportes se utilizará la categoría vigente corregida; la auditoría conserva todas las reclasificaciones. Esta decisión completa D-20: clasificación corregible solo por Admin, campos financieros inmutables. No autoriza reportes ni Fase 3E.
+
+
+## 22. Resoluciones de Fase 4 — D-22
+
+Aprobadas el 2026-10-02. Se incorpora íntegramente la resolución funcional de B4-01 a B4-14, sin reescribir D-01 a D-21. Las menciones previas a valoración pendiente quedan resueltas por esta decisión posterior. La precisión interna de costos derivados de inventario queda concretada en hasta ocho decimales; no cambia los importes finales HALF UP a dos decimales ni reescribe historia.
+
+Estado: Fase 3 cerrada para desarrollo. Autorización actual exclusivamente documental y preflight técnico de 4A. No autoriza código, tablas, migraciones ni modificaciones de Supabase.
+
+### B4-01 — Valoración del inventario
+Se aprueba PROMEDIO PONDERADO MÓVIL para V1.
+No usar FIFO ni selección manual de lotes.
+Reglas:
+- cada entrada valorada actualiza el costo promedio del stock disponible;
+- cada consumo congela el costo promedio vigente en ese instante;
+- consumos históricos nunca se recalculan posteriormente;
+- una salida normal no cambia el costo promedio de las unidades restantes;
+- cuando el stock llega a cero, no utilizar un costo actual futuro para reinterpretar el historial;
+- la siguiente entrada valorada establece nuevamente el promedio de la existencia disponible;
+- una devolución de consumo se reincorpora utilizando el costo unitario que fue aplicado originalmente a ese consumo, no el promedio actual;
+- al reincorporarse, participa como una entrada valorada en el nuevo promedio disponible;
+- toda valoración debe ser reproducible a partir de movimientos y snapshots históricos.
+No implementar FIFO/lotes en V1.
+### B4-02 — Unidad y precisión
+Cada material tendrá una única unidad base operativa.
+Ejemplos:
+- gramos;
+- metros;
+- unidades.
+En V1 no implementar presentaciones convertibles como:
+1 ovillo = 100 gramos
+ni
+1 paquete = 20 unidades.
+Si físicamente se compra en paquetes/ovillos, antes de persistir el movimiento se registra su equivalente en la unidad base.
+Cantidades:
+- positivas;
+- numeric/decimal;
+- hasta 4 decimales;
+- nunca float.
+La unidad unidad también puede manejar fracciones técnicamente; no crear reglas diferentes por unidad en V1.
+Una vez que un material tenga movimientos de inventario, su unidad base no puede cambiarse mediante edición ordinaria.
+Cambiarla requeriría una migración/conversión administrativa futura, fuera de V1.
+Costos unitarios derivados:
+- conservar hasta 8 decimales internos;
+- no redondear a 2 decimales el costo unitario calculado;
+- importes monetarios finales sí siguen HALF UP a 2 decimales.
+Por ejemplo, puede conservarse internamente:
+₡3.33333333 por gramo
+aunque el costo total aplicado al movimiento se presente/redondee monetariamente a 2 decimales.
+### B4-03 — Entradas, compra y existencia inicial
+Una entrada de compra debe conservar:
+- cantidad en unidad base;
+- importe original total;
+- moneda CRC/USD;
+- tasa histórica aplicada cuando corresponda;
+- importe equivalente CRC;
+- costo unitario CRC derivado con precisión interna;
+- fecha efectiva;
+- actor;
+- procedencia.
+Para una compra:
+unit_cost_crc = total_crc / quantity
+usando decimal de alta precisión.
+No usar automáticamente material_costs como costo histórico de una entrada.
+material_costs continúa siendo referencia/costo actual de catálogo.
+Existencia inicial
+Solo Admin puede crear un movimiento de saldo inicial.
+Debe indicar:
+- cantidad;
+- valoración;
+- moneda;
+- tasa si USD;
+- fecha;
+- motivo.
+No permitir stock inicial sin valoración.
+No asumir costo cero.
+Material con costo pendiente
+Puede existir en catálogo, pero no se puede registrar una entrada de inventario valorada ni consumir stock inexistente utilizando costo cero.
+La entrada debe contener su propia valoración histórica.
+### B4-04 — Compra ↔ gasto
+No generar automáticamente un gasto al registrar una compra de inventario.
+Inventario y desembolso financiero son conceptos relacionados pero distintos.
+Implementar trazabilidad para que una compra/entrada pueda vincularse opcionalmente a un expense_id.
+Una misma compra puede incluir varios materiales, por lo que la arquitectura puede utilizar:
+- cabecera de compra/recepción;
+- líneas de compra;
+- movimientos derivados.
+Un gasto puede representar una factura con múltiples materiales.
+Reglas:
+- ninguna entrada crea expenses automáticamente;
+- ningún expense crea stock automáticamente;
+- si se vinculan, preservar el vínculo;
+- anular el gasto no revierte inventario automáticamente;
+- corregir inventario no anula el gasto automáticamente;
+- cualquier corrección de ambos requiere operaciones explícitas separadas.
+Para futura rentabilidad, la compra no se sumará además del consumo del mismo material. La identidad de ambas fuentes debe quedar preservada para que Fase 5 evite doble contabilización.
+### B4-05 — Devoluciones y correcciones
+Un return de material consumido debe referenciar obligatoriamente el consumo original.
+Permitir devolución parcial.
+La suma devuelta nunca puede superar la cantidad neta originalmente consumida.
+La devolución usa exactamente el costo unitario aplicado al consumo original.
+No usar el promedio actual para valorar la devolución.
+Movimientos de inventario son inmutables.
+Las correcciones se hacen mediante movimientos compensatorios vinculados al original, nunca editando cantidad/costo histórico.
+Entrada incorrecta
+Si una entrada aún no tiene movimientos posteriores que dependan de ella, Admin puede revertirla mediante operación compensatoria completa con motivo.
+Si ya existen consumos/movimientos posteriores del material, no se permite reescribir retroactivamente esa entrada ni recalcular los consumos históricos.
+Admin deberá realizar un ajuste compensatorio actual con motivo/auditoría.
+No implementar devolución a proveedor en V1.
+### B4-06 — Permisos de inventario
+Admin:
+- consultar existencias;
+- registrar compras/entradas;
+- saldos iniciales;
+- ajustes positivos/negativos;
+- reversiones;
+- devoluciones;
+- ver costos;
+- consultar historial completo.
+Colaborador:
+- consultar existencias y alertas sin costos;
+- registrar consumo ordinario para pedidos;
+- registrar devolución vinculada a un consumo autorizado;
+- consultar historial operativo necesario sin columnas financieras.
+Colaborador NO puede:
+- registrar compras/entradas valoradas;
+- saldo inicial;
+- ajustes manuales;
+- reversiones administrativas;
+- ver costo promedio;
+- ver costos aplicados;
+- introducir moneda/tasa/costo.
+Inactivo/anónimo: cero acceso.
+### B4-07 — Consumos
+Todo movimiento de tipo consumption exige order_id.
+Una salida que no corresponde a un pedido debe ser otro tipo explícito, por ejemplo ajuste negativo, reservado a Admin; no llamarla consumo.
+order_item_id continúa siendo opcional.
+Si se informa, debe pertenecer al mismo pedido.
+Estados
+Colaborador puede consumir únicamente cuando el pedido esté:
+- in_production;
+- ready.
+No consumo ordinario nuevo en:
+- quote;
+- confirmed;
+- delivered;
+- cancelled.
+Admin puede realizar correcciones/devoluciones posteriores con motivo y auditoría, sin reescribir historia.
+En Cancelado no registrar consumo nuevo; únicamente movimientos correctivos/devoluciones autorizadas.
+Material inactivo
+Un material inactivo con existencia positiva puede continuar consumiéndose para agotar stock existente.
+No permitir nuevas compras/entradas ordinarias de material inactivo.
+Los movimientos históricos permanecen intactos.
+Históricos
+Para V1 no permitir insertar un movimiento retroactivo que se coloque antes de movimientos ya valorados y obligue a recalcular su costo.
+Admin puede registrar movimientos históricos únicamente si no rompen el orden cronológico ya consolidado del material.
+No recalcular consumos históricos.
+product_materials continúa siendo receta/estimación y no genera consumo automáticamente.
+### B4-08 — Varios trabajadores
+Se permite que varios trabajadores trabajen simultáneamente en el mismo pedido.
+Cada usuario conserva la restricción:
+máximo una sesión running o paused a la vez en todo SIGCA.
+Por tanto:
+- Usuario A puede trabajar Pedido X;
+- Usuario B también puede trabajar Pedido X;
+- Usuario A no puede simultáneamente trabajar Pedido Y.
+Colaborador puede consultar historial operativo de sesiones del pedido:
+- trabajador;
+- actividad;
+- inicio;
+- pausas;
+- fin;
+- duración.
+No puede ver:
+- tarifa;
+- costo de mano de obra.
+Admin puede ver todo.
+Admin puede pausar/finalizar una sesión activa de otro trabajador mediante acción explícita, motivo obligatorio y auditoría.
+### B4-09 — Sesiones abiertas y pedido
+Solo puede iniciarse/reanudarse cronómetro cuando el pedido esté:
+in_production.
+Si existe cualquier sesión running o paused, bloquear:
+- En producción → Listo;
+- cancelación;
+- retroceso En producción → Confirmado.
+Primero deben cerrarse explícitamente las sesiones.
+No cerrar sesiones automáticamente por transición de pedido.
+Si un trabajador se vuelve inactivo:
+- su tiempo registrado se conserva;
+- no puede reanudar/operar;
+- una sesión que hubiera quedado abierta debe ser finalizada por Admin mediante acción explícita con motivo;
+- no borrar ni ajustar silenciosamente tiempo.
+### B4-10 — Pausa, desconexión y olvidos
+Se permite finalizar directamente desde paused.
+El intervalo de pausa abierto se cierra en el momento de finalización y no cuenta como tiempo trabajado.
+Pérdida de conexión:
+- el cronómetro no se reinicia;
+- la sesión persiste en servidor;
+- una acción de pausa/reanudación/finalización que no logra llegar al servidor se considera no confirmada;
+- UI debe indicar fallo;
+- no aceptar timestamps retroactivos proporcionados silenciosamente por el cliente.
+Al reconectar, reconstruir estado desde Supabase.
+Sesiones olvidadas:
+- sin autocierre;
+- sin corte arbitrario;
+- Admin corrige/finaliza con motivo y auditoría.
+### B4-11 — Corrección y precisión de tiempo
+Persistir timestamps exactos y calcular duración efectiva en segundos enteros.
+No redondear cada sesión a minutos.
+La presentación puede mostrar horas/minutos, pero la fuente autoritativa conserva segundos.
+Para futuros costos:
+horas = segundos / 3600
+y el cálculo monetario utilizará decimal; el monto final se redondeará HALF UP cuando corresponda.
+No permitir solapamientos de sesiones del mismo usuario, incluso después de correcciones históricas.
+Corrección:
+- solo Admin;
+- sesión cerrada;
+- motivo;
+- before/after;
+- auditoría;
+- validar pausas e intervalos;
+- validar no solapamiento.
+Puede corregir marcas de inicio/fin/pausas mediante operación administrativa controlada. No UPDATE directo.
+La tarifa histórica aplicada no cambia durante una corrección temporal.
+Sesión histórica creada manualmente
+Solo Admin.
+Debe proporcionar explícitamente:
+- intervalo;
+- tarifa aplicada;
+- motivo.
+Nunca usar silenciosamente la tarifa actual como si hubiera sido histórica.
+Tarifa para sesiones actuales
+Para iniciar una sesión debe existir una tarifa por hora válida en Configuración.
+Si falta, bloquear inicio del cronómetro.
+Colaborador no necesita conocer su valor: servidor la congela sin exponerla.
+### B4-12 — Ciclo de envío
+Mantener los tipos aprobados:
+- pickup;
+- shipping;
+- personal_delivery.
+Para shipping y personal_delivery:
+pending → preparing → shipped → delivered
+Para pickup:
+pending → preparing → delivered
+pickup no pasa por shipped.
+Pedido
+Crear registro de envío desde pedido Confirmado en adelante.
+Despachar (shipped) solo cuando el pedido esté ready.
+Marcar envío/retirada delivered requiere pedido ready o delivered.
+Marcar envío Entregado no cambia automáticamente el pedido a Entregado.
+La UI puede ofrecer una segunda acción explícita para entregar el pedido respetando 3B.
+Roles
+Admin y Colaborador: transiciones normales hacia delante.
+Retrocesos/correcciones: solo Admin, motivo obligatorio y auditoría.
+El tipo/método puede editarse mientras esté pending/preparing.
+Después de shipped, para cambiarlo Admin debe retroceder explícitamente a preparing con motivo.
+Cancelación
+Agregar estado cancelled para envío.
+Solo Admin puede cancelar, con motivo.
+Cancelado es terminal.
+Usarlo cuando el pedido se cancela o el envío definitivamente deja de realizarse.
+No crear un segundo registro para el mismo pedido.
+Si antes de despachar el cliente cambia de envío a retiro, editar el mismo registro, no cancelarlo y recrearlo.
+### B4-13 — Dirección y cronología
+La dirección se copia como snapshot al crear el envío.
+Puede corregirse mientras esté:
+- pending;
+- preparing.
+Al pasar a shipped queda congelada.
+shipping y personal_delivery requieren dirección antes de despachar.
+pickup no requiere dirección de entrega.
+Para shipping:
+- transportista/mensajería obligatorio antes de shipped;
+- guía opcional.
+Para personal_delivery:
+- transportista externo y guía no son obligatorios.
+Para pickup:
+- no requiere transportista, guía ni shipped_at.
+Persistir:
+- shipped_at;
+- delivered_at.
+No futuras.
+Para shipping/personal_delivery:
+delivered_at >= shipped_at >= confirmed_at.
+Para pickup:
+delivered_at >= confirmed_at.
+requested_delivery_date continúa siendo compromiso/alerta; no bloquea despacho ni entrega.
+Históricos/correcciones de fechas: Admin con motivo, respetando cronología.
+### B4-14 — Costo de envío
+En V1, el costo operativo del envío será CRC únicamente.
+No implementar USD para envío en Fase 4.
+El importe representa costo efectivo, no estimado.
+Colaborador no consulta ni modifica costo.
+Admin registra/corrige costo mediante operación controlada con motivo/auditoría cuando corresponda.
+Pagador
+Valores:
+- business;
+- customer_direct.
+Si customer_direct:
+- SIGCA no registra el monto como gasto propio del envío;
+- no crea payment;
+- no modifica el total del pedido.
+Si business y existe costo:
+la fuente financiera oficial debe ser expenses.
+El envío puede conservar expense_id como vínculo operativo y mostrar el costo al Admin, pero no convertirse en una segunda fuente financiera.
+No crear el gasto automáticamente.
+Admin debe vincular un gasto existente o registrarlo explícitamente mediante el módulo Gastos.
+En futuros cálculos, si existe vínculo a expense_id, no sumar shipping_cost además del gasto.
+Cobro de envío al cliente
+No implementar un campo de cobro al cliente dentro de shipment.
+Si SIGCA cobra el envío al cliente, ese cobro debe formar parte del total del pedido mediante una línea comercial explícita conforme a las reglas de 3B.
+El módulo de envío nunca aumentará silenciosamente el total ni generará un pago.
+
+### Secuencia aprobada y alcance de esta entrega
+
+4A — Inventario base, compras/entradas, valoración promedio y existencias → 4B — Consumos, devoluciones y correcciones → 4C — Control de horas → 4D — Envíos → 4E — Auditoría integral y cierre de Fase 4. Cada implementación requiere la autorización correspondiente; aprobar el orden no autoriza implementarlo ahora.
+
+El preflight exclusivo de 4A se conserva en [PHASE4A_PREFLIGHT.md](PHASE4A_PREFLIGHT.md). Sus nombres físicos y contratos técnicos son propuestas, no decisiones funcionales adicionales. Las precisiones allí identificadas no reabren la elección de promedio móvil ni los permisos aprobados. Costeo/rentabilidad/reportes permanecen en Fases 5/6. A51 permanece obligatorio antes de producción; se mantienen el aislamiento intencional de order_counters y las observaciones de Performance documentadas en el cierre de Fase 3.
+
+
+## D-22 — Resolución final P4A-01/P4A-02/P4A-03 y autorización exclusiva 4A
+
+### P4A-01 — Precisión interna, HALF UP y residuos
+Confirmado:
+- cantidades de inventario: máximo 4 decimales;
+- costos unitarios derivados y promedio ponderado: máximo 8 decimales internos;
+- importes monetarios de entrada/finales: máximo 2 decimales;
+- aritmética exclusivamente numeric/decimal, nunca float;
+- cuando sea necesario persistir un valor derivado a 8 decimales, utilizar ROUND HALF UP.
+Regla autoritativa
+Para una entrada:
+- el importe histórico CRC total de la entrada es la referencia monetaria autoritativa;
+- unit_cost_crc = HALF_UP(total_crc / quantity, 8).
+Para el inventario vigente, además del promedio, mantener una valoración interna CRC con precisión suficiente para evitar reconstruir el valor únicamente multiplicando cantidades por un promedio redondeado.
+El promedio nuevo debe derivarse de:
+new_value_crc = old_value_crc + entry_total_crc
+new_quantity = old_quantity + entry_quantity
+new_average_crc = HALF_UP(new_value_crc / new_quantity, 8)
+La valoración interna puede conservar hasta 8 decimales.
+Diferencia de precisión
+Sí, conservar evidencia explícita cuando:
+quantity × unit_cost_crc
+no coincida exactamente con el total histórico de la entrada por efecto de la cuantización a 8 decimales.
+Puede almacenarse como un rounding_delta_crc o equivalente privado de evidencia:
+total_crc - (quantity × unit_cost_crc)
+usando precisión decimal.
+Este residuo:
+- no es un gasto;
+- no es un ingreso;
+- no es otro movimiento;
+- no altera el importe original;
+- sirve únicamente para trazabilidad/reconstrucción matemática;
+- solo Admin puede consultarlo si contiene información de costos.
+No repartir ni “esconder” el residuo modificando arbitrariamente cantidades o importes.
+Costo positivo que se vuelve cero
+Si un costo unitario matemáticamente positivo, después de representarlo a 8 decimales, resultara 0.00000000, rechazar la operación.
+No almacenar costo cero por pérdida de precisión.
+Debe devolverse un error de validación indicando que cantidad/importe exceden la precisión admitida por V1.
+No aumentar silenciosamente la precisión más allá de 8 decimales.
+### P4A-02 — Tipo de cambio en compras y saldos iniciales
+Confirmado: utilizar exactamente el mismo contrato de referencia cambiaria aprobado para gastos, adaptado al snapshot del inventario.
+Entrada USD con fecha empresarial actual
+1. utilizar referencia válida de hoy si existe;
+2. intentar obtener la referencia del proveedor aprobado cuando corresponda;
+3. si el proveedor falla o devuelve datos inválidos y existe una referencia válida anterior, utilizar la última persistida;
+4. conservar su fecha real, no hacerla pasar por tasa de hoy;
+5. conservar indicador de fallback;
+6. si nunca existe referencia válida, bloquear la entrada USD.
+Entrada histórica USD
+Debe utilizar referencia correspondiente exactamente a la fecha efectiva de la recepción.
+Si existe en exchange_rates, utilizarla.
+Si no existe:
+- únicamente Admin puede aportar la referencia histórica;
+- motivo obligatorio;
+- actor;
+- timestamp;
+- procedencia inequívoca;
+- auditoría.
+Una referencia histórica aportada por Admin no debe mostrarse como si hubiera sido obtenida automáticamente del proveedor.
+Saldo inicial
+Si el saldo inicial se expresa/origina en USD, aplicar exactamente las mismas reglas.
+Snapshot
+Cada línea USD debe congelar:
+- importe original;
+- moneda original;
+- tasa aplicada completa;
+- fecha real de la tasa;
+- origen/procedencia;
+- indicador fallback cuando corresponda;
+- actor/motivo si fue aporte histórico Admin;
+- equivalente CRC HALF UP a 2 decimales.
+Cambiar posteriormente exchange_rates, proveedor o configuración nunca recalcula una entrada ya registrada.
+Colaborador no selecciona, introduce ni modifica tasas.
+### P4A-03 — Valoración cero
+Confirmado: se rechaza también una valoración cero introducida expresamente.
+Para cualquier entrada valorada, compra o saldo inicial:
+- cantidad > 0;
+- importe histórico total > 0;
+- costo unitario derivado > 0;
+- equivalente CRC > 0.
+No permitir:
+- costo implícito cero;
+- costo explícito cero;
+- saldo inicial gratuito;
+- entrada gratuita;
+- monto negativo.
+La razón es que una entrada con existencia física positiva y valor cero contaminaría el promedio ponderado y los futuros costos aplicados.
+Si en el futuro SIGCA necesita manejar muestras, donaciones o material recibido gratuitamente, eso requerirá una decisión funcional específica con su tratamiento contable. No forma parte de V1.
+
+### Concreciones operativas y autorización posterior
+
+Después del checkpoint documental se autoriza únicamente 4A. Saldo inicial: una sola operación por material y únicamente sin movimiento previo, Admin/motivo. Recepción multilínea atómica; bloqueos determinísticos, revisión, UUID estable/idempotencia, snapshots y auditoría; rollback completo. Congelar unidad en servidor/BD desde primer movimiento. Sin entradas ordinarias de material inactivo. Vínculo opcional a gasto sin modificarlo ni automatizar altas/anulaciones. Alerta derivada stock <= min_stock, sin push/email.
+
+Admin consulta cantidades, compras, moneda, tasas, valor, promedio, costos y vínculos; Colaborador solo material/unidad/stock/mínimo/alerta e historial operativo sin importes. RLS, grants mínimos, search_path vacío, private no expuesto, actor auth.uid/perfil vigente. Inactivo bloqueado con JWT previo. No datos financieros en HTML/RSC ni payloads indirectos. Auditoría de cabecera/líneas/snapshot/movimiento/balance/valor/vínculo con actor/fecha/motivo; sin secretos ni binarios.
+
+Pruebas reales DEV obligatorias de concurrencia (dos entradas, orden inverso multimaterial, revisión obsoleta, UUID repetido, saldo inicial simultáneo, gasto concurrente), RLS e integridad monetaria, más regresión real suficiente de Fase 3. Responsive 320/375/768/1024/1440, estados y diseño vigentes. Ejecutar lint/typecheck/tests/build/E2E/audit/Advisors. Evidencia en PHASE4A_VERIFICATION.md con COMPLETO/PARCIAL/PENDIENTE/NO APLICA y local/simulado/DEV real diferenciados.
+
+No 4B/4C/4D/4E, consumos/devoluciones/ajustes, horas, envíos, rentabilidad ni reportes. Sin tag final; esperar revisión. Ante nueva decisión funcional, detener comportamiento afectado y consultar. Mantener protocolo de migraciones nuevas, pruebas locales, dry-run y revisión antes de DEV; sin DROP/TRUNCATE/reset ni borrados compensatorios.

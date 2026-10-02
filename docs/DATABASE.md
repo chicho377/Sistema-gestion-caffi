@@ -892,3 +892,47 @@ Admin y Colaborador comparten el rol técnico PostgreSQL authenticated; EXECUTE 
 El usuario autorizó validar 3A–3D como conjunto y corregir defectos técnicos dentro de reglas aprobadas, sin nuevos módulos ni Fase 4. Esto sustituye las limitaciones temporales de autorización de secciones anteriores. No modifica D-19/D-20/D-21.
 
 La migración 20261001235914_phase3e_private_image_delivery.sql extiende a order-references y catalog-images el aislamiento de bytes aplicado en 3D a expense-receipts. Ambas policies SELECT de Storage quedan USING(false). Los endpoints /api/order-file/[id] y /api/catalog-image/[id] comprueban perfil y metadatos con JWT/RLS vigentes antes de descargar bytes mediante infraestructura exclusiva del servidor, cacheNonce único y fetch no-store. Se conservan permisos funcionales, metadatos, versiones y objetos; no se entregan URLs portadoras ni claves administrativas. Subidas con rutas nuevas, upsert=false y cacheControl=0. Se invalidó únicamente la caché anterior. Evidencia de la reproducción y pruebas en PHASE3E_VERIFICATION.md.
+
+
+## D-22 — Modelo histórico de Fase 4 (solo documentación)
+
+Fase 3 cerrada para desarrollo. Resoluciones completas en DECISIONS.md D-22; sustituyen el pendiente de valoración, no reescriben D-01 a D-21 ni datos existentes. No hay autorización de crear tablas/migraciones. Esquema exacto propuesto de 4A en [PHASE4A_PREFLIGHT.md](PHASE4A_PREFLIGHT.md), distinguiendo decisiones aprobadas y precisiones abiertas.
+
+### 4A — Inventario/recepciones
+
+Proponer inventory_receipts, inventory_receipt_items, inventory_movements y proyecciones inventory_balances/inventory_valuations; costos del movimiento separados en inventory_movement_costs. Son nombres técnicos propuestos, no objetos creados. Reutilizar materials.unit/min_stock, material_costs, exchange_rates, expenses, profiles y audit_log. La sección antigua 2.12 es propuesta histórica: material_costs es la separación implementada; ausencia de costo de catálogo no implica cero ni valoración de inventario.
+
+Unidad base única; inmovilizar edición ordinaria tras primer movimiento. Cantidades numeric hasta cuatro decimales y positivas. Promedio ponderado móvil, costo derivado hasta ocho decimales y finales a dos HALF UP. Entrada conserva total original, moneda, tasa/fecha/procedencia, total CRC, cantidad y costo derivado. Saldo inicial Admin con valoración/fecha/motivo. No costo histórico implícito desde catálogo, no entradas sin valoración. Compra opcionalmente vinculada a expenses, varias líneas/materiales por factura; sin creación automática ni reversión cruzada.
+
+### 4B — Contrato que 4A debe preservar, sin implementarlo aún
+
+Consumo exige order_id; order_item_id opcional del mismo pedido. Congelar promedio al consumir; salida normal no modifica promedio restante. Return referencia obligatoriamente consumo y usa exactamente su costo aplicado, entra al nuevo promedio; devolución parcial acumulada limitada a cantidad neta consumida. Movimientos inmutables, compensación vinculada. Reversión de entrada sin dependencias posteriores solo Admin con motivo; posteriores requieren ajuste actual sin recalcular historia. No devolución a proveedor.
+
+Colaborador consumo ordinario in_production/ready y devolución autorizada; no costos ni ajustes. Material inactivo consumible si tiene stock, no nuevas compras/entradas ordinarias. Cancelado sin consumo nuevo; Admin puede correcciones/devoluciones auditadas posteriores. Históricos solo Admin sin anteponerse al orden consolidado que obligaría a revalorar. Receta no genera stock/consumo. No crear ahora RPC de consumo/devolución ni movimientos artificiales.
+
+### 4C — Sesiones y pausas previstas
+
+work_sessions y work_pauses conservan order_id, order_item_id opcional del mismo pedido, usuario, timestamps y estado. Separar tarifa aplicada/costo del acceso operativo. Tarifa válida al inicio; ausencia bloquea. Varios trabajadores por pedido, unicidad running/paused por usuario. Timestamps exactos y segundos enteros netos; pausa abierta se cierra y descuenta al finalizar. Inicio/reanudación solo in_production; sesiones abiertas bloquean Listo/cancelación/retroceso. Inactivo requiere cierre Admin motivado, sin pérdida de tiempo. No autocierre ni timestamps offline silenciosos.
+
+Corrección Admin de sesión cerrada con motivo, before/after, intervalos/pausas sin solapamiento y sin cambiar tarifa aplicada; no UPDATE directo. Alta histórica Admin con intervalo/tarifa/motivo explícitos. Colaborador ve historial operativo del pedido, nunca tarifa/costo. Las reglas de precisión subsegundo se concretarán técnicamente antes de 4C sin introducir redondeo a minutos.
+
+### 4D — Envío previsto
+
+shipments.order_id único. Tipos pickup/shipping/personal_delivery; estados pending/preparing/shipped/delivered/cancelled. Pickup omite shipped. Cancelled terminal, Admin/motivo, sin segundo registro. Correcciones/retrocesos Admin; ambos roles avanzan conforme a estado del pedido. Dirección snapshot al crear, editable pending/preparing, congelada shipped; transporte obligatorio para shipping antes de despacho, guía opcional. Fechas efectivas shipped_at y delivered_at no futuras; entrega >= despacho >= confirmación, o entrega >= confirmación para pickup sin despacho. Requested_delivery_date no bloquea entrega/despacho.
+
+Pagador business/customer_direct: sustituye para el futuro modelo el literal client de la propuesta anterior. Costo efectivo CRC, no estimado/USD; Colaborador no lee ni modifica. Business con costo toma expenses como fuente oficial, vínculo expense_id sin sumar otro shipping_cost ni crear gasto automáticamente. Customer_direct no crea gasto propio/payment ni cambia pedido. No campo de cobro dentro de shipment; cobro SIGCA exige línea comercial explícita de pedido. Dirección/estados/fechas y correcciones conservan historia auditada. No nuevos buckets/comprobantes de envío por inferencia.
+
+### Seguridad y evidencia
+
+RLS, grants mínimos, sin DML directo para saltar operaciones controladas; Admin/Colaborador desde perfil vigente, inactivo/anónimo sin acceso. Datos financieros separados de operación y private fuera de Data API. Nada de cambios automáticos de fuentes financieras, auditoría editable, borrado de historia, FIFO/lotes o rentabilidad anticipada. Orden 4A → 4B → 4C → 4D → 4E.
+
+
+## D-22 — Concreciones finales P4A y autorización exclusiva 4A
+
+P4A-01/02/03 resueltas (texto íntegro en DECISIONS.md). Cantidad hasta 4 decimales; costos/promedio internos hasta 8 con HALF UP; importes de entrada/finales hasta 2; solo numeric/decimal. Mantener valor interno CRC hasta 8 decimales como base: valor_nuevo = valor_anterior + total_CRC_entrada; cantidad_nueva = cantidad_anterior + cantidad_entrada; promedio_nuevo = HALF_UP(valor_nuevo/cantidad_nueva,8). No reconstruir valor multiplicando promedio redondeado por cantidad. Costo unitario entrada = HALF_UP(total_CRC/cantidad,8). Residuo privado = total_CRC - cantidad × costo_unitario; evidencia decimal, nunca gasto/ingreso/movimiento ni cambio del original. Rechazar costo positivo que colapse a cero a ocho decimales.
+
+Compra/saldo inicial: cantidad, total original, equivalente CRC y costo unitario estrictamente positivos; cero explícito/implícito y negativos prohibidos. Sin entradas gratuitas en V1. USD reutiliza exactamente contrato de gastos: referencia actual o fallback válido fechado/advertido; sin referencia previa se bloquea; histórico exige tasa exacta o aporte Admin con motivo/actor/timestamp/procedencia inequívoca. Snapshot completo inmutable; catálogo/tasa futura no recalculan historia.
+
+Saldo inicial Admin/motivo, solo si no existe ningún movimiento previo del material; una sola operación inicial. Congelar unidad en servidor/BD; multilínea atómica con bloqueos determinísticos, revisión y UUID estable, sin actualizaciones perdidas. Separar costos de historial operativo. Auditoría completa y vínculo opcional expenses sin automatismos. Alerta stock <= mínimo derivada.
+
+Tras commit documental se autoriza exclusivamente implementar 4A y sus pruebas locales/simuladas/DEV reales, sin 4B–4E ni tag final. Esquema actualizado en PHASE4A_PREFLIGHT.md; evidencia de ejecución se registrará en PHASE4A_VERIFICATION.md. No cambiar D-01 a D-21 ni historia.
