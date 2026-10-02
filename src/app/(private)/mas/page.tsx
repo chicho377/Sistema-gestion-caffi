@@ -34,6 +34,7 @@ export default async function More() {
           <Package size={20} />
           Productos
         </Link>
+        <Link className="button secondary" href="/inventario">Inventario</Link>
         <Link className="button secondary" href="/materiales">
           <Layers size={20} />
           Materiales

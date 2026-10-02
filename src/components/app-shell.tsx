@@ -104,6 +104,7 @@ export function AppShell({
         [UsersRound, "Clientes", "/clientes"],
         [Package, "Productos", "/productos"],
         [Layers, "Materiales", "/materiales"],
+        [Package, "Inventario", "/inventario"],
         [Shapes, "Categorías", "/categorias"],
         [Receipt, role === "admin" ? "Gastos" : "Mis gastos", "/gastos"],
       ].map(([Icon, label, href]) => {

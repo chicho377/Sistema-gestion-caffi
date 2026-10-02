@@ -192,6 +192,9 @@ const server = http.createServer(async (req, res) => {
         "materials",
         "product_categories",
         "material_costs",
+        "inventory_stock_read",
+        "inventory_balances",
+        "inventory_receipts",
       ].includes(table)
     ) {
       if (catalogDelay) await new Promise((resolve) => setTimeout(resolve, catalogDelay));

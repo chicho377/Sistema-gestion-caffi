@@ -87,6 +87,7 @@ function Fields({ fields, value = {} }: { fields: Field[]; value?: Row }) {
               disabled={!ready}
               name={f.name}
               type={f.type ?? "text"}
+              readOnly={f.name === "unit" && value.inventory_unit_locked === true}
               aria-labelledby={fieldGroup + "-" + f.name}
               defaultValue={String(value[f.name] ?? "")}
               maxLength={f.max}
@@ -102,6 +103,7 @@ function Fields({ fields, value = {} }: { fields: Field[]; value?: Row }) {
               inputMode={f.type === "number" ? "decimal" : undefined}
             />
           )}
+          {f.name === "unit" && value.inventory_unit_locked === true && <small>Unidad congelada por movimientos de inventario.</small>}
         </label>
       ))}
     </>

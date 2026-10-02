@@ -251,3 +251,11 @@ El índice oficial de changelog se leyó con un lector compatible después de qu
 ## Resolución final y checkpoint
 
 Esta actualización sustituye las expresiones históricas de autorización exclusivamente documental: primero commit documental, después implementación exclusiva 4A. No habilita 4B–4E. P4A-01..03 resueltas. Las propuestas de tablas, RLS y RPC deben implementar el valor interno separado y la evidencia aprobada; no persistir el algoritmo anterior Q×promedio como base.
+
+## Implementación posterior al checkpoint — 2026-10-02
+
+Checkpoint documental creado: `6679da3`. Las secciones anteriores describen el preflight original, no el estado actual de ejecución. Evidencia actual en [PHASE4A_VERIFICATION.md](PHASE4A_VERIFICATION.md).
+
+El esquema y las operaciones se consolidaron en una migración transaccional `20261002160448_phase4a_inventory.sql`; la segunda, `20261002162443_phase4a_fk_indexes.sql`, agrega cobertura de tres FKs compuestas. Se conservaron las siete tablas propuestas. La RPC única `register_inventory_receipt` diferencia compra/apertura mediante kind y exige las mismas reglas aprobadas; `link_inventory_expense` realiza el vínculo posterior. Estos nombres sustituyen únicamente los nombres técnicos tentativos de la sección 7. El prefijo de auditoría realizado es `inventory.<tabla>.registered/updated`, con snapshots y tipo de cabecera para distinguir apertura/compra. El límite técnico es 100 líneas por recepción y bloqueo UUID determinístico; no cambia unidades, valoración o permisos.
+
+Pruebas locales, UI simulada y Supabase DEV real realizadas; 19 migraciones equivalentes y dry-run sin pendientes. No se habilitaron 4B–4E ni se creó tag final.

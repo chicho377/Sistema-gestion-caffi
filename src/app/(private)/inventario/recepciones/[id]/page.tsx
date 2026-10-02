@@ -1,0 +1,17 @@
+import Link from 'next/link';
+import {notFound} from 'next/navigation';
+import {requireAdmin} from '@/lib/auth';
+import {createClient} from '@/lib/supabase/server';
+import {uuid} from '@/features/catalog/schema';
+import {cents,decimal,money} from '@/features/orders/domain';
+import {InventoryExpenseLink} from '@/components/inventory-form';
+export default async function ReceiptDetail({params}:{params:Promise<{id:string}>}){
+ await requireAdmin();const {id}=await params;if(!uuid.test(id))notFound();const client=await createClient();const receipt=await client.from('inventory_receipts').select('*').eq('id',id).maybeSingle();if(receipt.error)return <p role="alert">No se pudo consultar la recepción.</p>;if(!receipt.data)notFound();
+ const [items,link]=await Promise.all([client.from('inventory_receipt_items_read').select('*').eq('receipt_id',id).order('position'),client.from('inventory_receipt_expenses').select('expense_id').eq('receipt_id',id).maybeSingle()]);
+ const itemIds=(items.data??[]).map(i=>i.id);const movements=itemIds.length?await client.from('inventory_movements').select('id,receipt_item_id').in('receipt_item_id',itemIds):{data:[],error:null};
+ const costs=movements.data?.length?await client.from('inventory_movement_costs_read').select('*').in('movement_id',movements.data.map(m=>m.id)):{data:[],error:null};
+ return <><Link className="button secondary" href="/inventario/recepciones">Volver a recepciones</Link><h1>{receipt.data.receipt_kind==='opening_balance'?'Saldo inicial':'Compra / entrada'}</h1><section className="panel"><p>{receipt.data.source_reference}</p><p>{new Date(receipt.data.effective_at).toLocaleString('es-CR',{timeZone:'America/Costa_Rica'})}</p><p>{receipt.data.reason}</p><p>{receipt.data.notes}</p><small>Identificador: {id}</small></section>
+  {items.error||movements.error||costs.error?<p className="message error" role="alert">No se pudo cargar toda la evidencia monetaria. Recarga el detalle.</p>:items.data?.map(i=>{const movement=movements.data?.find(m=>m.receipt_item_id===i.id);const cost=costs.data?.find(c=>c.movement_id===movement?.id);return <section className="panel" key={i.id}><h2>{i.material_name_snapshot}</h2><p>{i.quantity} {i.unit_snapshot} · original {i.currency} {decimal(cents(i.amount_original))} · equivalente {money(i.amount_crc)}</p><p>Costo unitario CRC: {i.unit_cost_crc}</p>{i.currency==='USD'&&<p className={i.rate_is_fallback?'message':'muted'}>{i.rate_is_fallback?'Advertencia: tasa anterior por indisponibilidad de referencia actual. ':''}Tasa {i.exchange_rate_applied} · fecha real {i.exchange_rate_date} · {i.exchange_rate_source} · {i.rate_origin==='admin_historical'?'Aportada por Administración':'Referencia del proveedor'}</p>}{i.rate_override_reason&&<p>Motivo de tasa histórica: {i.rate_override_reason}</p>}{cost&&<><p>Valor interno antes / después: CRC {cost.value_before_crc} / {cost.value_after_crc}</p><p>Promedio antes / después: {cost.average_cost_before_crc??'Sin existencia'} / {cost.average_cost_after_crc}</p><p>Residuo decimal de entrada: {cost.rounding_delta_crc} CRC (evidencia, no gasto)</p></>}<Link className="button secondary" href={`/inventario/${i.material_id}`}>Historial del material</Link></section>;})}
+  {link.error?<p role="alert">No se pudo consultar el vínculo con gasto.</p>:link.data?<p className="message">Gasto vinculado: <Link href={`/gastos/${link.data.expense_id}`}>Consultar gasto y su estado</Link>. Sus cambios no modifican esta recepción.</p>:<InventoryExpenseLink id={id}/>}
+ </>;
+}

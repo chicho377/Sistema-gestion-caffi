@@ -56,7 +56,7 @@ export async function saveCatalog(
       cost: costs?.amount ?? null,
       cost_currency: costs?.currency ?? "CRC",
     });
-    if (error) return { error: dbError(error.code) };
+    if (error) return { error: error.code === "22023" && error.message.startsWith("La unidad está congelada") ? error.message : dbError(error.code) };
     revalidatePath("/materiales");
     return { id: result };
   }

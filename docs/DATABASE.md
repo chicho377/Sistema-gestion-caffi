@@ -936,3 +936,11 @@ Compra/saldo inicial: cantidad, total original, equivalente CRC y costo unitario
 Saldo inicial Admin/motivo, solo si no existe ningún movimiento previo del material; una sola operación inicial. Congelar unidad en servidor/BD; multilínea atómica con bloqueos determinísticos, revisión y UUID estable, sin actualizaciones perdidas. Separar costos de historial operativo. Auditoría completa y vínculo opcional expenses sin automatismos. Alerta stock <= mínimo derivada.
 
 Tras commit documental se autoriza exclusivamente implementar 4A y sus pruebas locales/simuladas/DEV reales, sin 4B–4E ni tag final. Esquema actualizado en PHASE4A_PREFLIGHT.md; evidencia de ejecución se registrará en PHASE4A_VERIFICATION.md. No cambiar D-01 a D-21 ni historia.
+
+### Implementación efectiva 4A (2026-10-02)
+
+Las siete tablas implementadas son inventory_receipts, inventory_receipt_items, inventory_receipt_expenses, inventory_movements, inventory_movement_costs, inventory_balances e inventory_valuations. Cantidad/valor usan dominios numeric (escalas 4/8); el residuo exacto admite escala 12 para conservar el producto sin redondeo adicional. UUID de recepción estable, línea/movimiento únicos, secuencia por material y FKs compuestas aseguran correspondencia. La valoración interna se conserva independientemente del promedio.
+
+RPC register_inventory_receipt (kind purchase/opening_balance, revisión por material) y link_inventory_expense: solo Admin activo, wrappers públicos invoker, operaciones privadas con search_path vacío. Guard de unidad, inmutabilidad, auditoría before/after y validación diferida de recepción/proyecciones. Sin INSERT/UPDATE/DELETE directo de aplicación. Las vistas stock/movements son operativas; valuations/receipt_items/movement_costs solo muestran datos a Admin mediante RLS security_invoker. Numeric textual; private no expuesto.
+
+Migraciones 20261002160448 y 20261002162443 aplicadas a DEV, 19 locales/remotas coincidentes. Tabla por tabla, grants, policies y huellas en [PHASE4A_VERIFICATION.md](PHASE4A_VERIFICATION.md). Ningún cambio a Storage o al modelo financiero de gastos; vínculo opcional sin automatismos. No hay consumo ni proyecciones de salida habilitadas en esta fase.

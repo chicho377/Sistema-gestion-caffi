@@ -348,3 +348,25 @@ Cierre técnico 3E: 20 criterios completos; 0 parciales/pendientes funcionales D
 
 
 Cierre Git autorizado: `test: complete phase 3 integration audit and closure`. Verificación previa: 17 migraciones local/DEV coincidentes, dry-run sin pendientes, huellas equivalentes, diff sin errores y ausencia de secretos/artefactos versionables. A51 permanece obligatorio antes de producción; order_counters conserva aislamiento intencional y los 23 INFO de Performance permanecen documentados sin eliminar índices. No se autoriza Fase 4.
+
+## Fase 4A — Inventario base autorizado posteriormente
+
+Tras las resoluciones D-22/P4A-01/02/03 y el checkpoint documental `6679da3`, se implementa exclusivamente 4A. En **Inventario**, ambos roles activos consultan existencias, mínimos y movimientos operativos; Administración registra compras multilínea o saldos iniciales valorados y consulta costos/snapshots. El Colaborador no recibe información financiera. El saldo inicial solo se permite antes de cualquier movimiento; la unidad queda congelada después del primero.
+
+La recepción es atómica, usa UUID estable y revisiones por material. Un conflicto conserva el formulario y permite recargar existencias antes de intentar otra vez. CRC/USD conserva importe original, tasa/fecha/procedencia y equivalente histórico. El promedio móvil se calcula desde el valor interno autoritativo, con evidencia de residuos. El vínculo opcional a un gasto es explícito y no genera ni anula gastos automáticamente.
+
+Migraciones: `20261002160448_phase4a_inventory.sql` y `20261002162443_phase4a_fk_indexes.sql`, aplicadas solo a DEV `pysgfnwsycgoneaecgcl` tras pruebas y dry-run; 19 migraciones coincidentes. No necesita dependencias, variables de entorno ni buckets nuevos. No habilita consumos/devoluciones/ajustes 4B, horas, envíos, costeo o reportes.
+
+Ver [matriz y evidencia de 4A](docs/PHASE4A_VERIFICATION.md). Repetir comandos npm habituales y `node tests/verify-secrets.mjs`. E2E usa fixture simulado. Para pruebas DEV reales, configurar `SIGCA_REAL_TESTS=1`, `SIGCA_TEST_ADMIN_EMAIL` y `SIGCA_TEST_MEMBER_EMAIL` con las cuentas autorizadas existentes; ejecutar secuencialmente:
+
+```powershell
+node tests/phase4a-real.mjs
+node tests/phase4a-precision-real.mjs
+$env:SIGCA_UI_URL='http://localhost:3001'
+node tests/phase4a-ui-real.mjs
+node tests/phase3d-regression-real.mjs
+```
+
+Las dos últimas requieren servidor local de producción conectado a DEV, por ejemplo `npm run build` y, en otra terminal, `npm run start -- --port 3001 --hostname localhost`. El puerto separado evita confundir el servidor real con el fixture E2E del puerto 3000. Las dos primeras preparan evidencia consumida por la prueba UI. Las suites conservan registros de prueba identificados, nunca los borran; la suite API desactiva/reactiva brevemente al Colaborador para verificar JWT vigente. Coordinar esa prueba cuando la cuenta no esté en operación. No cambian contraseñas ni envían correos. Evidencias/capturas permanecen en `test-results/` ignorado.
+
+A51 pendiente antes de producción; `order_counters` conserva su aislamiento. Performance registra 34 INFO de índices sin uso observado, sin eliminar índices. Sin tag final de 4A, a la espera de revisión del usuario.

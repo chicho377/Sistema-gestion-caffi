@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 
 const expect=baseExpect.configure({timeout:30000});
+const base=process.env.SIGCA_UI_URL??'http://localhost:3000';
 if(process.env.SIGCA_REAL_TESTS!=='1')throw Error('Requiere SIGCA_REAL_TESTS=1');
 process.loadEnvFile('.env.local');
 const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -59,8 +60,8 @@ try {
  ok(!(await member.client.from('manual_income_read').select('id').eq('id',incomeId)).data?.length,'Ingreso manual invisible a Colaborador');
  ok((await member.client.rpc('register_manual_income',{target:randomUUID(),payload:{amount:'1'}})).error?.code==='42501','Colaborador no registra ingreso manual');
  for(const amount of ['0','-1','1.001'])ok((await admin.client.rpc('register_manual_income',{target:randomUUID(),payload:{amount}})).error?.code==='22023','Ingreso inválido rechazado '+amount);
- for(const width of [320,1440]){await admin.page.setViewportSize({width,height:900});for(const path of ['/pedidos/'+id,'/ingresos-manuales/'+incomeId]){await admin.page.goto('http://localhost:3000'+path);await admin.page.waitForLoadState('networkidle');await expect(admin.page.getByRole('heading',{level:1})).toBeVisible();await expect(admin.page.getByRole('heading',{name:'No pudimos cargar esta página'})).toHaveCount(0);ok(await admin.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'UI regresión '+width+' '+path.split('/')[1]);}}
- await admin.page.goto('http://localhost:3000/gastos?order='+id);await expect(admin.page.getByText('Mostrando los gastos autorizados del')).toBeVisible();ok(true,'Filtro de gastos por pedido disponible sin agregado de costos');
+ for(const width of [320,1440]){await admin.page.setViewportSize({width,height:900});for(const path of ['/pedidos/'+id,'/ingresos-manuales/'+incomeId]){await admin.page.goto(base+path);await admin.page.waitForLoadState('networkidle');await expect(admin.page.getByRole('heading',{level:1})).toBeVisible();await expect(admin.page.getByRole('heading',{name:'No pudimos cargar esta página'})).toHaveCount(0);ok(await admin.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'UI regresión '+width+' '+path.split('/')[1]);}}
+ await admin.page.goto(base+'/gastos?order='+id);await expect(admin.page.getByText('Mostrando los gastos autorizados del')).toBeVisible();ok(true,'Filtro de gastos por pedido disponible sin agregado de costos');
  const cancellation=await admin.client.rpc('void_manual_income',{target:incomeId,reason:'Cierre regresión 3D; conservar original'});ok(!cancellation.error,'Anulación ingreso manual Admin');
  const after=await row('manual_income_read',incomeId);ok(after.status==='voided'&&after.amount===original.amount&&after.income_date===original.income_date,'Original de ingreso conservado');
  const log=await admin.client.from('audit_log').select('action').eq('entity_id',incomeId);ok(log.data?.some(e=>e.action==='manual_income.created')&&log.data?.some(e=>e.action==='manual_income.voided'),'Auditoría 3C conservada');

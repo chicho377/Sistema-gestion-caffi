@@ -33,6 +33,11 @@ export default async function CatalogDetail({
     if (error) throw new Error("No se pudo cargar el registro.");
     if (!data) notFound();
     row = data as unknown as Row;
+    if (catalog === "materiales") {
+      const { data: balance, error: balanceError } = await client.from("inventory_balances").select("revision").eq("material_id", id).maybeSingle();
+      if (balanceError) throw new Error("No se pudo verificar la unidad de inventario.");
+      row.inventory_unit_locked = Boolean(balance && Number(balance.revision) > 0);
+    }
     if (catalog === "materiales" && actor.role === "admin") {
       const { data: cost, error: costError } = await client
         .from("material_costs")

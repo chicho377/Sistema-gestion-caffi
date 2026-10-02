@@ -552,3 +552,11 @@ Compra/saldo inicial: cantidad, total original, equivalente CRC y costo unitario
 Saldo inicial Admin/motivo, solo si no existe ningún movimiento previo del material; una sola operación inicial. Congelar unidad en servidor/BD; multilínea atómica con bloqueos determinísticos, revisión y UUID estable, sin actualizaciones perdidas. Separar costos de historial operativo. Auditoría completa y vínculo opcional expenses sin automatismos. Alerta stock <= mínimo derivada.
 
 Tras commit documental se autoriza exclusivamente implementar 4A y sus pruebas locales/simuladas/DEV reales, sin 4B–4E ni tag final. Esquema actualizado en PHASE4A_PREFLIGHT.md; evidencia de ejecución se registrará en PHASE4A_VERIFICATION.md. No cambiar D-01 a D-21 ni historia.
+
+### Implementación efectiva 4A (2026-10-02)
+
+Ruta `/inventario`: listado paginado/búsqueda y mínimos; `/inventario/[id]`: diario operativo y valoración solo Admin; `/inventario/nueva`: compra/apertura multilínea; `/inventario/recepciones` y su detalle: evidencia financiera Admin. Server Actions en features/inventory validan sesión/permisos y delegan la transacción a register_inventory_receipt/link_inventory_expense. El resolver de tasas existente de gastos conserva su contrato y proveedor; no se replica una política cambiaria distinta.
+
+La UI conserva UUID y campos después de errores, bloquea reenvío mientras recarga revisión y usa SweetAlert2/Sonner. RLS separa datos financieros de movimientos operativos antes de responder al navegador. El catálogo consulta si existe primer movimiento para explicar la unidad congelada; el trigger mantiene la restricción ante API directa.
+
+Checkpoint 6679da3 y evidencia en [PHASE4A_VERIFICATION.md](PHASE4A_VERIFICATION.md). Sin dependencias nuevas, Auth/Storage nuevos ni funcionalidades 4B–4E. La implementación queda para revisión sin tag final.
