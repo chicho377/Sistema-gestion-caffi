@@ -145,3 +145,86 @@ Entrega sin tag final, pendiente de revisión/aceptación del usuario. A51 conti
 Nuevos: seis rutas/loading bajo `src/app/(private)/inventario/`, `src/components/inventory-form.tsx`, `src/features/inventory/domain.ts`, `src/features/inventory/actions.ts`, las dos migraciones indicadas, `tests/phase4a.test.mjs`, `tests/phase4a-real.mjs`, `tests/phase4a-precision-real.mjs`, `tests/phase4a-ui-real.mjs`, `tests/e2e/phase4a.spec.ts`, `tests/sql/phase4a-schema.sql` y este documento.
 
 Modificados después del checkpoint: README, ARCHITECTURE, DATABASE y PHASE4A_PREFLIGHT; navegación `app-shell`/`mas`; formulario, acción y detalle de catálogo para unidad congelada; fixture E2E y puerto configurable del arnés de regresión 3D. AGENTS.md, reference, package.json/lockfile y migraciones previas permanecen intactos. DECISIONS/REQUIREMENTS y las decisiones aprobadas se incorporaron exclusivamente en el checkpoint documental previo.
+
+## Auditoría final solicitada después de la aceptación provisional
+
+Fecha 2026-10-02. Antes de auditar se verificaron status, diff/check, secretos/artefactos, 19 migraciones local/DEV coincidentes y dry-run vacío. Commit de implementación creado: **51b56cd — feat: implement phase 4a inventory receipts and valuation**. Git quedó limpio inmediatamente después. Sin tag.
+
+Esta sección registra la auditoría posterior; sus conteos prevalecen sobre los de implementación anteriores. No fue necesario modificar código de aplicación, migraciones, Auth, configuración remota ni reglas funcionales. Los nuevos archivos son pruebas reproducibles y documentación. El único cambio a un arnés previo es `SIGCA_UI_URL` opcional en phase3e-real, preservando puerto 3000 por defecto.
+
+### Matriz final de los 18 criterios solicitados
+
+| Requisito | Estado | Evidencia | Entorno | Observación |
+|---|---|---|---|---|
+| 1. Promedio ponderado autoritativo | COMPLETO | phase4a-audit-real y phase4a-real; ejemplos inferiores | DEV real | Cuatro entradas sucesivas fraccionarias, valor/Q/promedio exactos |
+| 2. Precisión, HALF UP y residuos | COMPLETO | phase4a-precision-real, phase4a-real, domains SQL | Local + DEV real | Cantidad 4, costo 8, moneda 2; residuo separado; cero/colapso rechazados |
+| 3. Atomicidad multilínea | COMPLETO | phase4a-audit-real: tres líneas, segunda inválida | DEV real, fallo inducido de validación | Conteos de siete tablas y audit_log idénticos; proyecciones previas idénticas |
+| 4. Concurrencia e idempotencia | COMPLETO | phase4a-real y phase4a-audit-real | DEV real, sesiones independientes | Mismo material, dos aperturas, A/B vs B/A, A/B vs B/C, revisión obsoleta y UUID simultáneo |
+| 5. Saldo inicial | COMPLETO | phase4a-real y phase4a-audit-real | DEV real | Admin, positivo, motivo; rechazo después de compra o apertura anterior |
+| 6. Unidad congelada | COMPLETO | UI real, save_material Admin/Colaborador, Data API y SQL | Local + DEV real | Sin movimientos conserva edición; con movimientos autoritativamente bloqueada |
+| 7. CRC/USD y snapshots | COMPLETO | phase4a-real, SQL audit-rates, phase4a.test y expense-rate.test | DEV real + SQL controlado con rollback + local | CRC sin tasa; fallback real; hoy/exacta histórica con fixture; ausencia absoluta local; actualización de caché no cambia snapshot |
+| 8. Independencia respecto de gastos | COMPLETO | phase4a-real y phase4a-audit-real | DEV real | Sin/vínculo válido/inexistente; reclasificar/anular no altera inventario; conteos sin altas automáticas |
+| 9. Material inactivo | COMPLETO | phase4a-audit-real y phase4a-real | DEV real | Entrada rechazada; Colaborador sigue viendo existencia/historia |
+| 10. Separación financiera por rol | COMPLETO | JWT, JOIN conocido, tablas/vistas y HTML/RSC en cinco anchos | DEV real | Sin datos financieros ni vínculos a gastos en respuestas operativas; rutas Admin rechazadas |
+| 11. RLS, grants y private | COMPLETO | Matriz inferior, 28 combinaciones y API directa | DEV real | UUID conocido, JWT previo inactivo, anon, DML y RPC; private devuelve PGRST106 |
+| 12. Diario inmutable y reconstrucción | COMPLETO | phase4a-reconstruction.sql + arnés real | DEV real, consulta de todos los movimientos | Cero errores de cadena/proyección, costos faltantes o stock negativo |
+| 13. Alerta derivada | COMPLETO | Cambio de min_stock en phase4a-audit-real | DEV real | Igualdad activa alerta, mínimo 0 la retira; proyecciones y snapshots idénticos |
+| 14. Auditoría | COMPLETO | Eventos de siete tablas, before/after de proyecciones, motivo de apertura | DEV real | Actor/timestamp; histórico Admin conserva procedencia/motivo; Colaborador sin audit_log |
+| 15. Alcance exclusivo | COMPLETO | Catálogo SQL, CHECK de tipos y rutas/build | Local + DEV real | Sin consumption/return/ajustes, timers, shipments, rentabilidad o reportes |
+| 16. Regresión Fase 3 | COMPLETO | Reejecución phase3e-real: 117 comprobaciones | DEV real | Pedido, PED, pagos, estados, ingresos, gastos y Storage privado |
+| 17. Calidad y Advisors | COMPLETO | Comandos npm, secretos, Security/Performance | Local + DEV real | Hallazgos previos conservados; ningún índice eliminado |
+| 18. Evidencia y cierre para revisión | COMPLETO | Este documento y archivos de prueba versionables | Documentación | Sin tag; esperar revisión del usuario |
+
+**18 COMPLETO, 0 PARCIAL, 0 PENDIENTE funcional DEV, 0 NO APLICA dentro de estos 18 criterios.** A51 sigue PENDIENTE antes de producción, por separado; no se considera resuelto ni se cambia Auth/plan. Las fases 4B–4E siguen NO APLICA al alcance de esta auditoría.
+
+### Demostración decimal real
+
+Resultados persistidos por phase4a-audit-real y comprobados con aritmética BigInt escalada independiente de PostgreSQL; los importes no se compararon como float:
+
+| Entrada q | Total entrada CRC | Q acumulada | V acumulado CRC | Promedio HALF UP 8 |
+|---|---|---|---|---|
+| 0.125 | 10.01 | 0.125 | 10.01 | 80.08000000 |
+| 2.0001 | 7.13 | 2.1251 | 17.14 | 8.06550280 |
+| 3 | 10.00 | 5.1251 | 27.14 | 5.29550643 |
+| 0.0001 | 0.01 | 5.1252 | 27.15 | 5.29735425 |
+
+Se repitió también 10/3 y luego 21/6, y el empate 1/200000000 → 0.00000001 con residuo -1.00000000. Cada entrada incrementa exactamente un movimiento por línea, sin gasto adicional. Reconstrucción global del diario: chain_errors=0, projection_errors=0, missing_costs=0, negative_stock=0. No hay tablas work_sessions/shipments ni RPC de consumo/devolución/ajuste habilitadas.
+
+### Matriz real de permisos
+
+Para cada tabla se probó SELECT de un UUID **existente y conocido**, INSERT directo, UPDATE directo, DELETE directo y la RPC asociada. UPDATE/DELETE incorporan filtros contradictorios como protección adicional contra una mutación accidental; aun sin filas candidatas, PostgreSQL rechaza ambos por falta de privilegios (42501). INSERT mínimo también devuelve 42501 antes de validar contenido. No se borró ninguna fila. Los 28 resultados desglosados por rol se conservan en `test-results/phase4a-audit-real.json`.
+
+| Tabla | Admin | Colaborador | Inactivo | Anónimo | SELECT | INSERT | UPDATE | DELETE | RPC |
+|---|---|---|---|---|---|---|---|---|---|
+| inventory_receipts | Fila completa | 0 filas | 0 filas | 42501 | Admin activo | 42501 todos | 42501 todos | 42501 todos | Recepción: solo Admin |
+| inventory_receipt_items | Fila completa | 0 filas | 0 filas | 42501 | Admin activo | 42501 todos | 42501 todos | 42501 todos | Parte de recepción atómica |
+| inventory_receipt_expenses | Fila completa | 0 filas | 0 filas | 42501 | Admin activo | 42501 todos | 42501 todos | 42501 todos | Vínculo: solo Admin |
+| inventory_movements | Fila operativa | Fila operativa | 0 filas | 42501 | Perfil activo | 42501 todos | 42501 todos | 42501 todos | Solo derivado de recepción Admin |
+| inventory_movement_costs | Fila completa | 0 filas | 0 filas | 42501 | Admin activo | 42501 todos | 42501 todos | 42501 todos | Solo derivado de recepción Admin |
+| inventory_balances | Fila operativa | Fila operativa | 0 filas | 42501 | Perfil activo | 42501 todos | 42501 todos | 42501 todos | Solo proyección de recepción Admin |
+| inventory_valuations | Fila completa | 0 filas | 0 filas | 42501 | Admin activo | 42501 todos | 42501 todos | 42501 todos | Solo proyección de recepción Admin |
+
+No existe RPC independiente para editar cada tabla hija. La matriz ejercita register_inventory_receipt en esas filas y link_inventory_expense para el vínculo. Admin supera autorización y recibe 22023 ante payload deliberadamente inválido; los otros roles reciben 42501. Altas válidas Admin se comprueban en el recorrido real separado. SELECT se concede a authenticated y RLS comprueba el perfil vigente; el rol de negocio no proviene de metadata editable. Anónimo no tiene grant y private devuelve PGRST106 para los cuatro casos.
+
+La consulta anidada inventory_movements → inventory_movement_costs con UUID conocido retorna movimiento operativo y relación financiera vacía para Colaborador. Los identificadores de trazabilidad operativa no habilitan lectura de costos. Vistas financieras, audit_log y rutas de recepciones permanecen restringidas. No se conceden grants nuevos a service_role ni se usa esa clave como actor de negocio; solo prepara sesiones y bytes de infraestructura en los arneses existentes.
+
+### Separación de entornos y conteos de esta auditoría
+
+- **Local:** 26 tests aprobados, incluyendo el nuevo phase4a-audit.test. Usa PGlite y prueba rollback del guion SQL; los tests del resolver inducen proveedor caído/inválido y ausencia de caché. No equivale a una caída observada del proveedor remoto.
+- **Simulado:** 26 E2E con fixture, incluidos loading/vacío/error y roles; no sustituye RLS real.
+- **DEV real mediante JWT/UI:** phase4a-audit-real 223, phase4a-real 57, phase4a-precision-real 13, phase4a-ui-real 48 reales, phase3e-real 117. **458 comprobaciones reales** aprobadas.
+- **Fallos de red inducidos:** 2 comprobaciones adicionales de phase4a-ui-real, sobre formulario y vínculo contra servidor real. Total del arnés UI 50; **460 comprobaciones aprobadas** sumando las cinco suites, sin contar intentos fallidos del arnés ni el guion SQL como pruebas unitarias adicionales.
+- **DEV real, datos sintéticos transaccionales:** phase4a-audit-rates.sql aprobado; crea tasas de prueba de hoy/1905 dentro de BEGIN y ROLLBACK, prueba referencia por fecha, precisión, cambio posterior de caché, unidad/DML/domains y fuerza constraints antes de revertir. No son tasas obtenidas del proveedor. Consulta posterior: cero materiales/recepciones del fixture, cero snapshots históricos incompletos y cero CRC incoherentes. No se borran tasas existentes ni se persiste la actualización de caché.
+- **Fallos de negocio deliberados:** cantidad intermedia cero, revisión obsoleta, UUID repetido, carreras, permisos denegados y unidad congelada llegan al PostgreSQL real; sus rechazos no son respuestas mock. Están incluidos en los conteos DEV.
+
+La ausencia absoluta de tasa previa se valida en base local vacía; no se elimina ni oculta la caché de DEV para forzarla. El fallback previo se comprobó con la referencia realmente persistida y congelando su fecha real. Esta limitación de entorno no queda disfrazada como prueba real de indisponibilidad del proveedor.
+
+Lint sin warnings, typecheck/build correctos, npm audit producción con cero vulnerabilidades. Responsive real de 4A repetido para ambos roles en 320/375/768/1024/1440; 3E también verifica módulos previos en esos cinco anchos. Los artefactos visuales y resúmenes permanecen ignorados.
+
+### Hallazgos y cambios de la auditoría
+
+No se encontró una regla funcional incumplida que requiriera modificar 4A. Se corrigió una expectativa del arnés: la primera imagen histórica seleccionada estaba desactivada y debía devolver 404, no 200. La regresión 3E verifica adicionalmente imagen activa → 200, caché private/no-store, SDK directo bloqueado e inactivo → 401. Los tres buckets existentes se comprobaron privados; los comprobantes de gasto siguen accesibles solo mediante su proxy autorizado.
+
+Archivos nuevos: tests/phase4a-audit-real.mjs, tests/phase4a-audit.test.mjs, tests/sql/phase4a-audit-rates.sql y tests/sql/phase4a-reconstruction.sql. Modificados: tests/phase3e-real.mjs (solo URL del servidor de prueba) y este documento. No se editaron migraciones aplicadas ni se crearon otras. No cambian dependencias ni UI/reglas de negocio.
+
+Security: A51 WARN pendiente de producción e INFO order_counters intencional; Performance: 34 INFO unused_index, sin eliminaciones. Se mantienen los enlaces y explicaciones de la sección anterior. No se crea tag final ni se declara aceptación del usuario. Sin avance a 4B/4C/4D/4E.

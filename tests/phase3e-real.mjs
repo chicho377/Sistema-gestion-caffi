@@ -6,6 +6,7 @@ import {writeFile} from 'node:fs/promises';
 import sharp from 'sharp';
 import {expect as baseExpect} from '@playwright/test';
 const expect=baseExpect.configure({timeout:30000});
+const base=process.env.SIGCA_UI_URL??'http://localhost:3000';
 const h=await devHarness(),evidence=[],matrix=[],screens=[],ids={order:randomUUID(),income:randomUUID(),expense:randomUUID(),categories:[randomUUID(),randomUUID()]};
 let admin,member,admin2,inactive=false,stage='inicio';
 const prefix='VERIFICACION-3E-'+Date.now();
@@ -53,19 +54,19 @@ try{
  r=await h.service.rpc('register_catalog_image',{actor:admin.id,product:ids.product,object_path:path,caption_text:prefix,is_logo:false});ok(!r.error,'Metadato imagen auditado');ids.image=r.data;
  const ref=(await admin.client.from('order_files').select('id,path').limit(1)).data?.[0];if(!ref)throw Error('Falta referencia histórica');
  const files=[{id:ids.image,path,bucket:'catalog-images',route:'catalog-image'}, {...ref,bucket:'order-references',route:'order-file'}];
- for(const f of files){for(const who of [admin,member]){const res=await who.context.request.get(`http://localhost:3000/api/${f.route}/${f.id}`);ok(res.status()===200&&res.headers()['cache-control']==='private, no-store',f.bucket+' proxy autoriza perfil activo y no-store');ok(!!(await who.client.storage.from(f.bucket).download(f.path)).error,f.bucket+' SDK no expone bytes a JWT');}ok((await fetch(`http://localhost:3000/api/${f.route}/${f.id}`)).status===401,f.bucket+' proxy anónimo rechazado');}
+ for(const f of files){for(const who of [admin,member]){const res=await who.context.request.get(`${base}/api/${f.route}/${f.id}`);ok(res.status()===200&&res.headers()['cache-control']==='private, no-store',f.bucket+' proxy autoriza perfil activo y no-store');ok(!!(await who.client.storage.from(f.bucket).download(f.path)).error,f.bucket+' SDK no expone bytes a JWT');}ok((await fetch(`${base}/api/${f.route}/${f.id}`)).status===401,f.bucket+' proxy anónimo rechazado');}
  ok(!(await admin.client.from('profiles').update({status:'inactive'}).eq('id',member.id)).error,'Inactivación controlada');inactive=true;
- for(const f of files){ok((await member.context.request.get(`http://localhost:3000/api/${f.route}/${f.id}`)).status()===401,f.bucket+' inactivo pierde proxy calentado');ok(!!(await member.client.storage.from(f.bucket).download(f.path)).error,f.bucket+' inactivo sin caché SDK');}
+ for(const f of files){ok((await member.context.request.get(`${base}/api/${f.route}/${f.id}`)).status()===401,f.bucket+' inactivo pierde proxy calentado');ok(!!(await member.client.storage.from(f.bucket).download(f.path)).error,f.bucket+' inactivo sin caché SDK');}
  ok(!(await admin.client.from('profiles').update({status:'active'}).eq('id',member.id)).error,'Perfil restaurado');inactive=false;
  stage='UI integrada';
  for(const who of [admin,member])for(const width of [320,375,768,1024,1440]){
   await who.page.setViewportSize({width,height:900});await who.page.emulateMedia({reducedMotion:'reduce'});
   for(const route of ['/pedidos/'+ids.order,'/gastos/'+ids.expense,...(who===admin?['/ingresos-manuales/'+ids.income,'/categorias-gastos','/configuracion']:[])]){
-   await who.page.goto('http://localhost:3000'+route);await who.page.waitForLoadState('networkidle');await expect(who.page.getByRole('heading',{level:1})).toBeVisible();await expect(who.page.getByRole('heading',{name:'No pudimos cargar esta página'})).toHaveCount(0);
+   await who.page.goto(base+route);await who.page.waitForLoadState('networkidle');await expect(who.page.getByRole('heading',{level:1})).toBeVisible();await expect(who.page.getByRole('heading',{name:'No pudimos cargar esta página'})).toHaveCount(0);
    ok(await who.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Sin overflow '+(who===admin?'Admin':'Colaborador')+' '+width+' '+route.split('/')[1]);screens.push({role:who===admin?'Admin':'Colaborador',width,screen:route.split('/')[1]});
   }
  }
- for(const route of ['/ingresos-manuales/'+ids.income,'/categorias-gastos','/configuracion']){await member.page.goto('http://localhost:3000'+route);await expect(member.page).toHaveURL(/dashboard\?notice=forbidden/);ok(!(await member.page.content()).includes(prefix),'Ruta restringida no entrega contenido '+route.split('/')[1]);}
+ for(const route of ['/ingresos-manuales/'+ids.income,'/categorias-gastos','/configuracion']){await member.page.goto(base+route);await expect(member.page).toHaveURL(/dashboard\?notice=forbidden/);ok(!(await member.page.content()).includes(prefix),'Ruta restringida no entrega contenido '+route.split('/')[1]);}
  const logs=(await admin.client.from('audit_log').select('action,user_id,created_at,metadata').eq('entity_id',ids.order)).data;
  for(const action of ['order.confirmed','order.payment_recorded','order.delivered'])ok(logs.some(l=>l.action===action&&l.user_id&&l.created_at&&l.metadata),'Auditoría reconstruible '+action);
  ok(!(await member.client.from('audit_log').select('id').eq('entity_id',ids.order)).data?.length,'Colaborador no consulta auditoría general');
