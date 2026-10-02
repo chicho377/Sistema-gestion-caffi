@@ -1,0 +1,20 @@
+with objects as (select unnest(array['orders','order_items','order_files','order_counters','payments','manual_income','expense_categories','expenses','expense_files','quotes_read','quote_items_read','quote_products_read','payments_read','order_payment_summary','manual_income_read','expenses_read']) name), funcs as (
+ select p.*,n.nspname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+ where n.nspname in ('public','private') and (p.proname ~ '(quote|order|payment|manual_income|expense)' or p.proname in ('is_active','is_admin','audit_catalog','catalog_stamp')) and not exists(select 1 from pg_depend d where d.classid='pg_proc'::regclass and d.objid=p.oid and d.deptype='e')
+)
+select jsonb_build_object(
+'columns',(select md5(string_agg(table_name||':'||column_name||':'||data_type||':'||udt_name||':'||is_nullable||':'||coalesce(column_default,''),E'\n' order by table_name,ordinal_position)) from information_schema.columns where table_schema='public' and table_name in(select name from objects)),
+'constraints',(select md5(string_agg(conrelid::regclass::text||':'||conname||':'||pg_get_constraintdef(oid)||':'||convalidated,E'\n' order by conrelid::regclass::text,conname)) from pg_constraint where connamespace='public'::regnamespace and (conrelid::regclass::text in(select name from objects) or contypid='public.quote_money'::regtype) and contype<>'n'),
+'functions',(select md5(string_agg(pg_get_functiondef(oid),E'\n' order by nspname,proname,pg_get_function_identity_arguments(oid))) from funcs),
+'policies',(select md5(string_agg(schemaname||':'||tablename||':'||policyname||':'||permissive||':'||roles::text||':'||cmd||':'||coalesce(qual,'')||':'||coalesce(with_check,''),E'\n' order by schemaname,tablename,policyname)) from pg_policies where tablename in(select name from objects) or policyname in ('order_references_read','expense_receipts_read','catalog_images_read')),
+'indexes',(select md5(string_agg(indexdef,E'\n' order by indexname)) from pg_indexes where schemaname='public' and tablename in(select name from objects)),
+'views',(select md5(string_agg(viewname||':'||definition||':'||coalesce(array_to_string(c.reloptions,','),''),E'\n' order by viewname)) from pg_views v join pg_class c on c.oid=('public.'||v.viewname)::regclass where v.schemaname='public' and viewname in(select name from objects)),
+'triggers',(select md5(string_agg(pg_get_triggerdef(oid)||':'||tgenabled::text,E'\n' order by tgrelid::regclass::text,tgname)) from pg_trigger where not tgisinternal and tgrelid::regclass::text in(select name from objects)),
+'grants',(select md5(string_agg(table_name||':'||grantee||':'||privilege_type,E'\n' order by table_name,grantee,privilege_type)) from information_schema.table_privileges where table_schema='public' and table_name in(select name from objects) and grantee in ('anon','authenticated','service_role')),
+'column_grants',(select md5(string_agg(table_name||':'||column_name||':'||grantee||':'||privilege_type,E'\n' order by table_name,column_name,grantee,privilege_type)) from information_schema.column_privileges where table_schema='public' and table_name in(select name from objects) and grantee in ('anon','authenticated','service_role')),
+'execute',(select md5(string_agg(nspname||'.'||proname||':'||pg_get_function_identity_arguments(oid)||':'||r||':'||has_function_privilege(r,oid,'EXECUTE'),E'\n' order by nspname,proname,pg_get_function_identity_arguments(oid),r)) from funcs cross join unnest(array['anon','authenticated','service_role']) r),
+'storage',(select jsonb_agg(jsonb_build_object('id',id,'public',public,'limit',file_size_limit,'mime',allowed_mime_types) order by id) from storage.buckets where id in('order-references','expense-receipts','catalog-images')),
+'rls',(select bool_and(relrowsecurity) from pg_class where relnamespace='public'::regnamespace and relkind='r' and relname in(select name from objects)),
+'unvalidated',(select count(*) from pg_constraint where connamespace='public'::regnamespace and not convalidated),
+'unsafe_definers',(select count(*) from funcs where prosecdef and not coalesce(proconfig @> array['search_path=""'],false))
+) as fingerprint;

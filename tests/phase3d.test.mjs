@@ -6,13 +6,14 @@ test('3D: gastos, moneda, fallback, permisos y conservación de originales',asyn
  const db=new PGlite();
  try {
   await db.exec((await readFile('tests/phase3a.test.mjs','utf8')).match(/await db.exec\(`([\s\S]*?)`\);/)[1]);
-  let before;
+  let before, after3d;
   const fingerprint=async()=>Promise.all(['3b','3c'].map(async phase=>(await db.query(await readFile(`tests/sql/phase${phase}-schema.sql`,'utf8'))).rows));
   for(const file of (await readdir('supabase/migrations')).filter(x=>x.endsWith('.sql')).sort()) {
+   if(file.includes('phase3e')&&!after3d) after3d=await fingerprint();
    if(file.includes('phase3d')&&!before) before=await fingerprint();
    await db.exec(await readFile('supabase/migrations/'+file,'utf8'));
   }
-  assert.deepEqual(await fingerprint(),before,'3D conserva los contratos de 3B y 3C');
+  assert.deepEqual(after3d??await fingerprint(),before,'3D conserva los contratos de 3B y 3C antes del endurecimiento Storage 3E');
   await db.exec(await readFile('tests/sql/phase3d-verification.sql','utf8'));
   await db.exec(await readFile('tests/sql/phase3d-permissions.sql','utf8'));
   await db.exec(await readFile('tests/sql/phase3d-rates-storage-local.sql','utf8'));

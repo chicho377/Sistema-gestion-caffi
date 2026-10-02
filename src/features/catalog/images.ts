@@ -47,7 +47,7 @@ export async function uploadImage(
     : "branding/" + randomUUID() + ".webp";
   const { error } = await admin.storage
     .from("catalog-images")
-    .upload(path, buffer, { contentType: "image/webp", upsert: false });
+    .upload(path, buffer, { contentType: "image/webp", upsert: false, cacheControl: "0" });
   if (error) return { error: "No se pudo subir la imagen. Vuelve a intentar." };
   const { error: metadataError } = await admin.rpc("register_catalog_image", {
     actor: actor.id,

@@ -20,7 +20,7 @@ export async function uploadQuoteFile(orderId: string, form: FormData): Promise<
     const bytes = await normalizeImage(Buffer.from(await file.arrayBuffer()), file.type);
     const admin = createAdminClient();
     const path = `orders/${orderId}/${randomUUID()}.webp`;
-    const { error } = await admin.storage.from("order-references").upload(path, bytes, { contentType: "image/webp", upsert: false });
+    const { error } = await admin.storage.from("order-references").upload(path, bytes, { contentType: "image/webp", upsert: false, cacheControl: "0" });
     if (error) return { error: "No se pudo subir la referencia. Intenta nuevamente." };
     const { error: metadataError } = await admin.rpc("register_order_file", { actor: actor.id, target: orderId, object_path: path, caption_text: caption, size_bytes: bytes.length, replaces });
     if (metadataError) return { error: "No se pudo asociar el archivo. El estado o acceso pudo cambiar; consulta al Administrador." };

@@ -1,6 +1,8 @@
 import { getActiveProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { uuid } from "@/features/catalog/schema";
+import { randomUUID } from "node:crypto";
+import { createAdminClient } from "@/lib/supabase/admin";
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -22,10 +24,10 @@ export async function GET(
     path = data?.path ?? null;
   }
   if (!path) return new Response(null, { status: 404 });
-  // Descarga con JWT de usuario: revalida RLS en cada acceso, sin URLs portadoras duraderas.
-  const { data, error } = await client.storage
+  // El JWT/RLS autoriza metadatos; los bytes privados solo atraviesan este servidor.
+  const { data, error } = await createAdminClient().storage
     .from("catalog-images")
-    .download(path);
+    .download(path, { cacheNonce: randomUUID() }, { cache: "no-store" });
   if (error || !data) return new Response(null, { status: 404 });
   return new Response(data, {
     headers: {

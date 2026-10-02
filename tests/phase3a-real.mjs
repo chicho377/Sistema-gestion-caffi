@@ -141,7 +141,7 @@ try{
  await member.page.getByLabel('Imagen de referencia').setInputFiles({name:'referencia2.png',mimeType:'image/png',buffer:image});await member.page.getByLabel('Reemplazar referencia').selectOption(first.id);await member.page.getByRole('button',{name:'Guardar referencia'}).click();
  await expect.poll(async()=>((await member.client.from('order_files').select('id').eq('order_id',orderId)).data??[]).length).toBe(2);
  files=(await member.client.from('order_files').select('*').eq('order_id',orderId)).data;
- ok(files.length===2&&files.filter(f=>f.is_active).length===1&&(await member.client.storage.from('order-references').download(first.path)).data,'Reemplazo conserva metadato y bytes anteriores');
+ ok(files.length===2&&files.filter(f=>f.is_active).length===1&&(await member.context.request.get('http://localhost:3000/api/order-file/'+first.id)).status()===200,'Reemplazo conserva metadato y bytes anteriores mediante endpoint autorizado');
  await mkdir('test-results',{recursive:true});
  for(const width of [320,375,768,1024,1440]){
  await member.page.setViewportSize({width,height:950});await go(member,'/pedidos/'+orderId);await expect(member.page.getByRole('heading',{name:'Cotización',exact:true})).toBeVisible();

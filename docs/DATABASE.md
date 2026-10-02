@@ -885,3 +885,10 @@ Solo cambia category_id y metadatos técnicos de actualización/revisión. Se co
 `public.reclassify_expense(target, expected_revision, new_category, reason)` delega a `private.reclassify_expense` con search_path vacío. La implementación exige perfil Admin activo antes de acceder al gasto, bloquea perfil/gasto y categoría destino, valida revisión y escribe el evento específico en la misma transacción. `PT409` identifica revisión obsoleta/estado no válido; `22023` datos inválidos; `42501` falta de autorización. Si falla la auditoría, revierte también categoría y revisión.
 
 Admin y Colaborador comparten el rol técnico PostgreSQL authenticated; EXECUTE del wrapper no constituye permiso funcional. La comprobación de rol vigente en BD rechaza toda llamada de Colaborador, y el servidor exige requireAdmin. No se añaden grants DML ni policies de escritura. private no se expone a Data API. La función conserva la auditoría genérica existente y añade expense.category_changed con los snapshots íntegros y el motivo específico.
+
+
+## Fase 3E — Auditoría integral y entrega privada de imágenes
+
+El usuario autorizó validar 3A–3D como conjunto y corregir defectos técnicos dentro de reglas aprobadas, sin nuevos módulos ni Fase 4. Esto sustituye las limitaciones temporales de autorización de secciones anteriores. No modifica D-19/D-20/D-21.
+
+La migración 20261001235914_phase3e_private_image_delivery.sql extiende a order-references y catalog-images el aislamiento de bytes aplicado en 3D a expense-receipts. Ambas policies SELECT de Storage quedan USING(false). Los endpoints /api/order-file/[id] y /api/catalog-image/[id] comprueban perfil y metadatos con JWT/RLS vigentes antes de descargar bytes mediante infraestructura exclusiva del servidor, cacheNonce único y fetch no-store. Se conservan permisos funcionales, metadatos, versiones y objetos; no se entregan URLs portadoras ni claves administrativas. Subidas con rutas nuevas, upsert=false y cacheControl=0. Se invalidó únicamente la caché anterior. Evidencia de la reproducción y pruebas en PHASE3E_VERIFICATION.md.

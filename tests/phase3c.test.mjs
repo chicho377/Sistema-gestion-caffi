@@ -7,12 +7,13 @@ test('3C: ingresos administrativos, RLS, inmutabilidad, auditoría y rollback', 
  try {
   const prior = await readFile('tests/phase3a.test.mjs','utf8');
   await db.exec(prior.match(/await db.exec\(`([\s\S]*?)`\);/)[1]);
-  let before;
+  let before, after3c;
   for (const file of (await readdir('supabase/migrations')).filter(x=>x.endsWith('.sql')).sort()) {
-   if (file.includes('phase3c')) before=(await db.query(await readFile('tests/sql/phase3b-schema.sql','utf8'))).rows;
+   if (file.includes('phase3c')&&!before) before=(await db.query(await readFile('tests/sql/phase3b-schema.sql','utf8'))).rows;
    await db.exec(await readFile('supabase/migrations/'+file,'utf8'));
+   if (file.includes('phase3c')) after3c=(await db.query(await readFile('tests/sql/phase3b-schema.sql','utf8'))).rows;
   }
-  assert.deepEqual((await db.query(await readFile('tests/sql/phase3b-schema.sql','utf8'))).rows,before,'3C no altera objetos de 3B');
+  assert.deepEqual(after3c,before,'3C no altera objetos de 3B; comparación en el límite de esa fase');
   await db.exec(await readFile('tests/sql/phase3c-verification.sql','utf8'));
   assert.equal((await db.query('select count(*)::int n from public.manual_income')).rows[0].n,0);
   await mkdir('test-results',{recursive:true});
