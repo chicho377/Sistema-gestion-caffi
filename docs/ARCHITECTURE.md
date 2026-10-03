@@ -561,7 +561,7 @@ La UI conserva UUID y campos después de errores, bloquea reenvío mientras reca
 
 Checkpoint 6679da3 y evidencia en [PHASE4A_VERIFICATION.md](PHASE4A_VERIFICATION.md). Sin dependencias nuevas, Auth/Storage nuevos ni funcionalidades 4B–4E. La implementación queda para revisión sin tag final.
 
-## D-23 — Diseño técnico 4B, todavía sin implementación
+## D-23 — Diseño técnico 4B (preflight aprobado; ejecución documentada al final)
 
 Resolución íntegra en DECISIONS.md D-23; requisitos RF-INV-14..21. D-23 prevalece sobre las frases históricas D-22 relativas a promedio restante constante y devolución valorada solo como cantidad por costo unitario. 4A cerrada en aec1fb6; preservar sus snapshots/migraciones. Esta autorización es exclusivamente documental e inspección SELECT, sin DDL ni código de aplicación.
 
@@ -575,4 +575,17 @@ No ampliar inventory_actor() de 4A: permanece Admin para recepción y vínculo a
 
 UI futura desde pedido/línea activa: consumo, remanente retornable, historial con atribución corregida; Admin ajustes/reversión y evidencia financiera separada. Loading/vacío/error/409/red, conservar formulario/UUID, SweetAlert2 crítico y Sonner éxito. Cinco anchos 320/375/768/1024/1440, tarjetas móviles, Lucide, tokens, controles 44 px y reduced-motion.
 
-Inspección exacta de seis CHECK y tres NOT NULL, cambios aditivos, función de recepción y preflight DEV en [PHASE4B_PREFLIGHT.md](PHASE4B_PREFLIGHT.md). No autorización DROP CONSTRAINT ni migraciones. Mantener A51, aislamiento order_counters e INFO Performance; sin avance 4C/4D/4E.
+Inspección exacta de seis CHECK y tres NOT NULL, cambios aditivos, función de recepción y preflight DEV en [PHASE4B_PREFLIGHT.md](PHASE4B_PREFLIGHT.md). En el preflight aún no había autorización DROP CONSTRAINT ni migraciones; la excepción limitada posterior se registra al final. Mantener A51, aislamiento order_counters e INFO Performance; sin avance 4C/4D/4E.
+
+### Aclaración matemática D-23 — precisión en devoluciones parciales
+
+Con q_rem=q0-qr y v_rem=D0-Vr: si r<q_rem, R=HALF_UP(v_rem*r/q_rem,8) y debe cumplirse 0<R<v_rem. Rechazar R<=0 o R>=v_rem por precisión insuficiente; nunca dejar cantidad retornable positiva con valor retornable cero. Si r=q_rem, R=v_rem exacto. No es una nueva política de valoración: conserva D-23, precisión e historia. Ejemplo q_rem=2,v_rem=0.00000001: devolver 1 se rechaza y devolver 2 juntas se permite. Pruebas obligatorias de ambos límites, total directa, parciales válidas/final exacta y concurrencia alrededor del límite.
+
+Autorizada implementación exclusivamente 4B después del checkpoint 06cfacd, con los seis CHECK y tres NOT NULL exactos del preflight y adaptación exclusiva de inventory_receipt_complete(). No otras excepciones DROP ni avance 4C/4D/4E ni tag final.
+
+
+### Implementación efectiva 4B (2026-10-03)
+
+D-23 y su aclaración de precisión están implementadas exclusivamente para consumos, devoluciones y correcciones. Se reutilizan diario/costos/proyecciones 4A; evidencia aditiva de atribución y ajustes sin stock, RPC transaccional inventory_operation, vistas operativas sin costos y vista financiera Admin. Consumo/devolución proporcionales a 8 decimales, final exacto, movimientos inmutables, revisión e idempotencia, lock compartido con pedidos 3B y auditoría atómica. No cambia ninguna política de valoración aprobada.
+
+Migraciones nuevas 20261003040656, 20261003042715 y 20261003092616 aplicadas solo a SIGCA DEV; 22 locales/remotas coincidentes. Se ejercieron únicamente las excepciones de seis CHECK y tres NOT NULL autorizadas; la función 4A inventory_receipt_complete conserva contrato con comparación nullable. Detalle de objetos, permisos, pruebas locales/DEV/inducidas y limitaciones en [PHASE4B_VERIFICATION.md](PHASE4B_VERIFICATION.md). Pantalla de operaciones desde inventario/pedido, historial paginado y evidencia de atribuciones. Sin nuevas dependencias, variables, buckets ni cambios de Auth. A51 permanece pendiente para producción. No implementa 4C/4D/4E ni crea tag final.

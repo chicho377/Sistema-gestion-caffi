@@ -1,0 +1,5 @@
+export type StockOption={id:string;code:string;name:string;unit:string;stock:string;revision:string;is_active:boolean};
+export type OrderOption={id:string;order_number:string|null;production_status:string;revision:number};
+export type ItemOption={id:string;order_id:string;product_name_snapshot:string;is_active:boolean};
+export type MovementOption={id:string;material_id:string;movement_type:string;quantity:string;order_id:string|null;order_item_id:string|null;attribution_revision:string;returnable_quantity:string|null;effective_at:string;reason:string|null;stock_before:string;stock_after:string};
+export const movementLabels:Record<string,string>={purchase_entry:'Compra / entrada',opening_balance:'Saldo inicial',consumption:'Consumo',return:'Devolución',adjustment_positive:'Ajuste positivo',adjustment_negative:'Ajuste negativo',entry_reversal:'Reversión de entrada',receipt_reversal:'Revertir recepción completa',quantity_correction:'Corregir cantidad',attribution_correction:'Corregir pedido / línea'};

@@ -2,7 +2,7 @@
 
 # Modelo de datos propuesto para Supabase
 
-Estado actual: Fases 1/2 implementadas; 3A implementada en DEV. La sección 12 distingue el esquema vigente de las propuestas para 3B–3E.
+Estado actual: Fases 1–3 y 4A cerradas para DEV; 4B implementada y verificada para revisión. Las secciones históricas conservan la evolución de propuestas; las secciones de implementación efectiva y PHASE4B_VERIFICATION describen el esquema vigente.
 
 > Este documento es una propuesta de implementación derivada de los requerimientos aprobados.  
 > Los nombres físicos pueden ajustarse durante las migraciones, pero no deben perderse las responsabilidades, relaciones ni reglas de negocio descritas aquí.
@@ -960,3 +960,16 @@ Nueva tabla propuesta inventory_movement_attribution_corrections: id, movement_i
 Para ajuste positivo sin stock, propuesta de nueva tabla privada por RLS inventory_adjustment_cost_evidence ligada 1:1 al movimiento: importe/moneda original, equivalente CRC, tasa/fecha/fuente/fallback y aporte histórico Admin actor/fecha/motivo. Reutilizar contrato y resolver 4A; mantenerla separada de inventory_movements accesible a Colaborador y no simular una compra. Es aditiva y su necesidad obedece a los snapshots USD aprobados, que movement_costs no contiene. Nuevos índices en FKs, búsqueda por pedido/línea/origen y unicidad de revisión/solicitud; evitar índices duplicados.
 
 Solo lecturas administrativas pueden acceder a valor/deltas/evidencia cambiaria; no DML directo. Crear nuevas validaciones de cadena, signo, costos 1:1, remanentes de devolución y atribución; reutilizar auditoría/inmutabilidad. Adaptación de inventory_receipt_complete() conserva firma trigger y grants, pero compara promedios nullable correctamente tras agotamiento. No tablas nuevas de horas/envíos/reportes ni efectos automáticos sobre expenses.
+
+### Aclaración matemática D-23 — precisión en devoluciones parciales
+
+Con q_rem=q0-qr y v_rem=D0-Vr: si r<q_rem, R=HALF_UP(v_rem*r/q_rem,8) y debe cumplirse 0<R<v_rem. Rechazar R<=0 o R>=v_rem por precisión insuficiente; nunca dejar cantidad retornable positiva con valor retornable cero. Si r=q_rem, R=v_rem exacto. No es una nueva política de valoración: conserva D-23, precisión e historia. Ejemplo q_rem=2,v_rem=0.00000001: devolver 1 se rechaza y devolver 2 juntas se permite. Pruebas obligatorias de ambos límites, total directa, parciales válidas/final exacta y concurrencia alrededor del límite.
+
+Autorizada implementación exclusivamente 4B después del checkpoint 06cfacd, con los seis CHECK y tres NOT NULL exactos del preflight y adaptación exclusiva de inventory_receipt_complete(). No otras excepciones DROP ni avance 4C/4D/4E ni tag final.
+
+
+### Implementación efectiva 4B (2026-10-03)
+
+D-23 y su aclaración de precisión están implementadas exclusivamente para consumos, devoluciones y correcciones. Se reutilizan diario/costos/proyecciones 4A; evidencia aditiva de atribución y ajustes sin stock, RPC transaccional inventory_operation, vistas operativas sin costos y vista financiera Admin. Consumo/devolución proporcionales a 8 decimales, final exacto, movimientos inmutables, revisión e idempotencia, lock compartido con pedidos 3B y auditoría atómica. No cambia ninguna política de valoración aprobada.
+
+Migraciones nuevas 20261003040656, 20261003042715 y 20261003092616 aplicadas solo a SIGCA DEV; 22 locales/remotas coincidentes. Se ejercieron únicamente las excepciones de seis CHECK y tres NOT NULL autorizadas; la función 4A inventory_receipt_complete conserva contrato con comparación nullable. Detalle de objetos, permisos, pruebas locales/DEV/inducidas y limitaciones en [PHASE4B_VERIFICATION.md](PHASE4B_VERIFICATION.md). Pantalla de operaciones desde inventario/pedido, historial paginado y evidencia de atribuciones. Sin nuevas dependencias, variables, buckets ni cambios de Auth. A51 permanece pendiente para producción. No implementa 4C/4D/4E ni crea tag final.

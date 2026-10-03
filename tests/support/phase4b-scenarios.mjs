@@ -1,0 +1,82 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+export async function inventoryScenarios(h){
+ const evidence=[],prefix='VALIDACION-4B-'+Date.now(),ids={materials:[],orders:[]};
+ const check=(v,label)=>{assert.ok(v,label);evidence.push(label);};
+ const success=async(name,args,who='admin')=>{const r=await h.rpc(who,name,args);assert.equal(r.error,null,name+': '+JSON.stringify(r.error));return r.data;};
+ const row=async(table,key,id)=>{const rows=await h.rows('admin',table,key,id);assert.equal(rows.length,1,table);return rows[0];};
+ const rev=async m=>String((await row('inventory_stock_read','id',m)).revision);
+ const orev=async o=>(await row('quotes_read','id',o)).revision;
+ const customer=await h.client(prefix);
+ async function order(){const id=randomUUID(),line=randomUUID(),inactiveLine=randomUUID(),day=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Costa_Rica',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ await success('save_quote',{target:id,expected_revision:0,payload:{client_id:customer,order_date:day,requested_delivery_date:day,discount_amount:'0',notes:prefix,items:[{id:line,product_name_snapshot:prefix,quantity:'1',unit_price:'1',discount_amount:'0',is_active:true},{id:inactiveLine,product_name_snapshot:prefix+' inactiva',quantity:'1',unit_price:'1',discount_amount:'0',is_active:false}]}});
+ await success('confirm_order',{target:id,expected_revision:1,payload:{deposit_percentage:'0'}});
+ await success('transition_order',{target:id,expected_revision:2,payload:{state:'in_production'}});ids.orders.push(id);return {id,line,inactiveLine};}
+ async function material(q='3',amount='10'){const id=await success('save_material',{target_id:null,material_code:prefix+'-'+ids.materials.length,material_name:prefix,material_category:'Prueba 4B conservada',material_unit:'gramos',minimum:'1',enabled:true,cost:null,cost_currency:'CRC'});ids.materials.push(id);if(q)await receipt(id,q,amount);return id;}
+ async function receipt(m,q='3',amount='10'){return success('register_inventory_receipt',{target:randomUUID(),payload:{kind:'purchase',source_reference:prefix,lines:[{material_id:m,unit:'gramos',quantity:q,amount,currency:'CRC'}]},expected_revisions:{[m]:await rev(m)}});}
+ async function args(op,m,p={},target=randomUUID()) {const orders={};for(const o of [p.order_id,p.destination_order_id])if(o)orders[o]=await orev(o);
+ if(p.source_movement_id){const source=await row('inventory_operations_read','id',p.source_movement_id);if(source.order_id)orders[source.order_id]=await orev(source.order_id);p={attribution_revision:source.attribution_revision,...p};}
+ return {target,operation:op,payload:{material_id:m,reason:prefix,...p},expected_revisions:{[m]:await rev(m)},expected_orders:orders};}
+ const op=async(kind,m,p={},who='admin')=>success('inventory_operation',await args(kind,m,p),who);
+ const deny=async(kind,m,p,code,who='admin')=>{const r=await h.rpc(who,'inventory_operation',await args(kind,m,p));check(r.error?.code===code,'Rechazo '+kind+' '+code+' '+evidence.length);};
+ const o=await order(),other=await order(),m=await material();
+ const first=await op('consumption',m,{order_id:o.id,order_item_id:o.line,quantity:'1'},'member');
+ check((await row('inventory_operation_costs_read','movement_id',first)).assigned_value_crc==='3.33333333','Consumo parcial proporcional');
+ check((await row('inventory_valuations_read','material_id',m)).value_crc==='6.66666667','Valor restante autoritativo');
+ await deny('consumption',m,{order_id:o.id,order_item_id:other.line,quantity:'1'},'22023');
+ await deny('consumption',m,{order_id:o.id,order_item_id:o.inactiveLine,quantity:'1'},'22023');
+ await deny('consumption',m,{order_id:o.id,quantity:'0.00001'},'22023');
+ const second=await op('consumption',m,{order_id:o.id,quantity:'2'});
+ let v=await row('inventory_valuations_read','material_id',m);check(Number(v.value_crc)===0&&v.average_unit_cost_crc===null,'Agotamiento exacto Q/V=0,A=NULL');
+ await receipt(m);check(Number((await row('inventory_valuations_read','material_id',m)).value_crc)===10,'Regresión recepción 4A después de agotamiento');
+ await op('return',m,{source_movement_id:second,quantity:'0.5'},'member');
+ await op('return',m,{source_movement_id:second,quantity:'0.5'},'member');
+ await op('return',m,{source_movement_id:second,quantity:'1'},'member');
+ check((await row('inventory_operations_read','id',second)).returnable_quantity==='0.0'||Number((await row('inventory_operations_read','id',second)).returnable_quantity)===0,'Varias parciales y devolución final exacta');
+ check(Number((await row('inventory_valuations_read','material_id',m)).value_crc)===16.66666667,'Recuperación exacta D0 con entrada intermedia');
+ await deny('return',m,{source_movement_id:second,quantity:'0.1'},'PT409');
+ const tiny=await material('200000000','1');const limit=await op('consumption',tiny,{order_id:o.id,quantity:'2'});
+ check((await row('inventory_operation_costs_read','movement_id',limit)).assigned_value_crc==='0.00000001','Subcentavo interno positivo');
+ await deny('return',tiny,{source_movement_id:limit,quantity:'1'},'22023');
+ await deny('return',tiny,{source_movement_id:limit,quantity:'0.1'},'22023');
+ await op('return',tiny,{source_movement_id:limit,quantity:'2'});check(Number((await row('inventory_valuations_read','material_id',tiny)).value_crc)===1,'Total directa recupera valor mínimo exacto');
+ const idempotent=await args('consumption',m,{order_id:o.id,quantity:'0.25'});await success('inventory_operation',idempotent);
+ const repeated=await h.rpc('admin','inventory_operation',idempotent);check(repeated.error?.code==='PT409','UUID duplicado no duplica movimientos');
+ const stale=await h.rpc('admin','inventory_operation',{...idempotent,target:randomUUID()});check(stale.error?.code==='PT409','Revisión obsoleta rechazada');
+ await h.materialActive(m,false);await op('consumption',m,{order_id:o.id,quantity:'0.25'});await op('return',m,{source_movement_id:first,quantity:'1'},'member');check(true,'Material inactivo admite consumo/devolución');await h.materialActive(m,true);
+ await deny('adjustment_negative',m,{quantity:'1'},'42501','member');
+ await op('adjustment_positive',m,{quantity:'0.5'});await op('adjustment_negative',m,{quantity:'0.5'});check(true,'Ajustes proporcionales Admin');
+ const empty=await material(null);await op('adjustment_positive',empty,{quantity:'2',amount:'5',currency:'CRC'});check(Number((await row('inventory_valuations_read','material_id',empty)).value_crc)===5,'Ajuste positivo con stock cero y evidencia');
+ const reversible=await material();const original=(await h.rows('admin','inventory_operations_read','material_id',reversible))[0];await op('entry_reversal',reversible,{source_movement_id:original.id});check(Number((await row('inventory_valuations_read','material_id',reversible)).value_crc)===0,'Reversión línea 4A exacta');
+ await deny('entry_reversal',reversible,{source_movement_id:original.id},'PT409');
+ const attributionBefore={balance:await row('inventory_stock_read','id',m),cost:await row('inventory_operation_costs_read','movement_id',first)};
+ await op('attribution_correction',m,{source_movement_id:first,destination_order_id:other.id,destination_order_item_id:other.line});check((await row('inventory_operations_read','id',first)).order_id===other.id,'Atribución corregida sin devolver/reconsumir');
+ check(JSON.stringify(attributionBefore)===JSON.stringify({balance:await row('inventory_stock_read','id',m),cost:await row('inventory_operation_costs_read','movement_id',first)}),'Atribución conserva proyección y snapshot financiero íntegros');
+ const correctedEvidence=(await h.rows('admin','inventory_movement_attribution_corrections','movement_id',first))[0];check(correctedEvidence.previous_order_id===o.id&&correctedEvidence.corrected_order_id===other.id&&correctedEvidence.reason===prefix&&!!correctedEvidence.created_by&&!!correctedEvidence.created_at,'Atribución conserva before/after, actor, fecha y motivo');
+ const guarded=await material();const entryOrigin=(await h.rows('admin','inventory_operations_read','material_id',guarded))[0];
+ const gc=await op('consumption',guarded,{order_id:other.id,quantity:'1'});
+ await deny('entry_reversal',guarded,{source_movement_id:entryOrigin.id},'PT409');
+ const beforeCorrection=await row('inventory_stock_read','id',guarded);
+ await deny('quantity_correction',guarded,{source_movement_id:gc,quantity:'1',replacement_quantity:'999'},'PT409');
+ check(JSON.stringify(await row('inventory_stock_read','id',guarded))===JSON.stringify(beforeCorrection),'Corrección compuesta fallida revierte devolución previa');
+ await deny('consumption',guarded,{order_id:other.id,quantity:'1',effective_at:'2999-01-01T00:00:00-06:00'},'22023');
+ await deny('consumption',guarded,{order_id:other.id,quantity:'1',effective_at:'1900-01-01T00:00:00-06:00'},'22023');
+ await deny('consumption',guarded,{order_id:other.id,quantity:'1',effective_at:'1900-01-01T00:00:00-06:00'},'42501','member');
+ const usd=await material(null);await op('adjustment_positive',usd,{quantity:'2',amount:'1.25',currency:'USD',historical_rate:'501.2345',rate_source:prefix,rate_reason:'Referencia histórica declarada de prueba',effective_at:'1888-05-05T12:00:00-06:00'});
+ check((await row('inventory_operation_costs_read','movement_id',(await h.rows('admin','inventory_operations_read','material_id',usd))[0].id)).assigned_value_crc==='626.54','Ajuste sin stock USD histórico conserva conversión HALF UP');
+ const rx=await material(null),ry=await material(null),rid=randomUUID();
+ await success('register_inventory_receipt',{target:rid,payload:{kind:'purchase',source_reference:prefix,lines:[rx,ry].map(material_id=>({material_id,unit:'gramos',quantity:'2',amount:'3',currency:'CRC'}))},expected_revisions:{[rx]:'0',[ry]:'0'}});
+ await success('inventory_operation',{target:randomUUID(),operation:'receipt_reversal',payload:{receipt_id:rid,reason:prefix},expected_revisions:{[rx]:'1',[ry]:'1'},expected_orders:{}});
+ check(Number((await row('inventory_stock_read','id',rx)).stock)===0&&Number((await row('inventory_stock_read','id',ry)).stock)===0,'Reversión multilínea local/DEV');
+ const blockedReceipt=randomUUID();await success('register_inventory_receipt',{target:blockedReceipt,payload:{kind:'purchase',source_reference:prefix,lines:[rx,ry].map(material_id=>({material_id,unit:'gramos',quantity:'2',amount:'3',currency:'CRC'}))},expected_revisions:{[rx]:await rev(rx),[ry]:await rev(ry)}});
+ await op('consumption',ry,{order_id:other.id,quantity:'1'});
+ const pairBefore=JSON.stringify([await row('inventory_stock_read','id',rx),await row('inventory_stock_read','id',ry)]);
+ const blocked=await h.rpc('admin','inventory_operation',{target:randomUUID(),operation:'receipt_reversal',payload:{receipt_id:blockedReceipt,reason:prefix},expected_revisions:{[rx]:await rev(rx),[ry]:await rev(ry)},expected_orders:{}});
+ check(blocked.error?.code==='PT409'&&pairBefore===JSON.stringify([await row('inventory_stock_read','id',rx),await row('inventory_stock_read','id',ry)]),'Reversión multilínea con una línea dependiente no compensa ninguna');
+ const memberCosts=await h.rows('member','inventory_operation_costs_read','movement_id',first);check(memberCosts.length===0,'RLS Colaborador sin costos');
+ await deny('attribution_correction',m,{source_movement_id:first,destination_order_id:o.id},'42501','member');
+ await success('transition_order',{target:o.id,expected_revision:await orev(o.id),payload:{state:'ready'}});await success('transition_order',{target:o.id,expected_revision:await orev(o.id),payload:{state:'delivered'}});
+ await deny('consumption',m,{order_id:o.id,quantity:'1'},'PT409');
+ await op('quantity_correction',m,{source_movement_id:idempotent.target,quantity:'0.25',replacement_quantity:'0.5'});check(true,'Corrección Admin vinculada después de Entregado');
+ return {evidence,ids,prefix,helpers:{row,rev,orev,material,receipt,order,args,op,success,check}};
+}

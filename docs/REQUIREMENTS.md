@@ -1,6 +1,6 @@
 # REQUIREMENTS.md
 
-> Vigencia de inventario 4B: D-23 complementa D-22 y prevalece en valoración de salidas/devoluciones según la sección final de este documento. Implementación todavía no autorizada.
+> Vigencia de inventario 4B: D-23 complementa D-22 y prevalece en valoración de salidas/devoluciones según la sección final de este documento. Implementación 4B autorizada posteriormente y verificada en PHASE4B_VERIFICATION.md.
 
 # Mini Sistema para Emprendimiento de Crochet
 
@@ -721,3 +721,16 @@ El texto íntegro de B4B-01 a B4B-07 está en DECISIONS.md D-23. Prevalece sobre
 - **RF-INV-21 — Cronología:** Colaborador usa hora servidor sin backdating. Admin histórica no futura, >= confirmed_at del pedido y >= last_effective_at del material. Mismo instante ordenado por material_sequence. Devolución/corrección >= instante origen y secuencia consolidada. No insertar antes de historia valorada. Referencias históricas sobreviven desactivación de líneas. Receta no genera consumos.
 
 Sin gastos automáticos, rentabilidad, cronómetro ni envíos. Preflight técnico y autorización limitada pendiente en [PHASE4B_PREFLIGHT.md](PHASE4B_PREFLIGHT.md).
+
+### Aclaración matemática D-23 — precisión en devoluciones parciales
+
+Con q_rem=q0-qr y v_rem=D0-Vr: si r<q_rem, R=HALF_UP(v_rem*r/q_rem,8) y debe cumplirse 0<R<v_rem. Rechazar R<=0 o R>=v_rem por precisión insuficiente; nunca dejar cantidad retornable positiva con valor retornable cero. Si r=q_rem, R=v_rem exacto. No es una nueva política de valoración: conserva D-23, precisión e historia. Ejemplo q_rem=2,v_rem=0.00000001: devolver 1 se rechaza y devolver 2 juntas se permite. Pruebas obligatorias de ambos límites, total directa, parciales válidas/final exacta y concurrencia alrededor del límite.
+
+Autorizada implementación exclusivamente 4B después del checkpoint 06cfacd, con los seis CHECK y tres NOT NULL exactos del preflight y adaptación exclusiva de inventory_receipt_complete(). No otras excepciones DROP ni avance 4C/4D/4E ni tag final.
+
+
+### Implementación efectiva 4B (2026-10-03)
+
+D-23 y su aclaración de precisión están implementadas exclusivamente para consumos, devoluciones y correcciones. Se reutilizan diario/costos/proyecciones 4A; evidencia aditiva de atribución y ajustes sin stock, RPC transaccional inventory_operation, vistas operativas sin costos y vista financiera Admin. Consumo/devolución proporcionales a 8 decimales, final exacto, movimientos inmutables, revisión e idempotencia, lock compartido con pedidos 3B y auditoría atómica. No cambia ninguna política de valoración aprobada.
+
+Migraciones nuevas 20261003040656, 20261003042715 y 20261003092616 aplicadas solo a SIGCA DEV; 22 locales/remotas coincidentes. Se ejercieron únicamente las excepciones de seis CHECK y tres NOT NULL autorizadas; la función 4A inventory_receipt_complete conserva contrato con comparación nullable. Detalle de objetos, permisos, pruebas locales/DEV/inducidas y limitaciones en [PHASE4B_VERIFICATION.md](PHASE4B_VERIFICATION.md). Pantalla de operaciones desde inventario/pedido, historial paginado y evidencia de atribuciones. Sin nuevas dependencias, variables, buckets ni cambios de Auth. A51 permanece pendiente para producción. No implementa 4C/4D/4E ni crea tag final.
