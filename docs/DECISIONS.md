@@ -722,3 +722,194 @@ Admin consulta cantidades, compras, moneda, tasas, valor, promedio, costos y ví
 Pruebas reales DEV obligatorias de concurrencia (dos entradas, orden inverso multimaterial, revisión obsoleta, UUID repetido, saldo inicial simultáneo, gasto concurrente), RLS e integridad monetaria, más regresión real suficiente de Fase 3. Responsive 320/375/768/1024/1440, estados y diseño vigentes. Ejecutar lint/typecheck/tests/build/E2E/audit/Advisors. Evidencia en PHASE4A_VERIFICATION.md con COMPLETO/PARCIAL/PENDIENTE/NO APLICA y local/simulado/DEV real diferenciados.
 
 No 4B/4C/4D/4E, consumos/devoluciones/ajustes, horas, envíos, rentabilidad ni reportes. Sin tag final; esperar revisión. Ante nueva decisión funcional, detener comportamiento afectado y consultar. Mantener protocolo de migraciones nuevas, pruebas locales, dry-run y revisión antes de DEV; sin DROP/TRUNCATE/reset ni borrados compensatorios.
+
+## D-23 — Consumos, devoluciones y correcciones de inventario
+
+Aprobado el 2026-10-02 como continuación de D-22. Se conserva íntegro D-01 a D-22. Alcance actual: documentación e inspección de solo lectura, sin implementación 4B ni autorización de DROP CONSTRAINT.
+
+Precedencia explícita: B4B-01 sustituye para las futuras salidas la frase de D-22 «una salida normal no cambia el costo promedio de las unidades restantes»: se recalcula el promedio restante desde el valor interno proporcional. B4B-02 precisa/sustituye la valoración de devolución por costo unitario multiplicado: retorna el valor interno asignado al consumo, preservando también el costo unitario snapshot como evidencia. No reinterpreta movimientos 4A existentes ni cambia sus entradas.
+
+Resolución aprobada, transcrita a continuación. Los nombres físicos adicionales y restricciones propuestos se inspeccionan en PHASE4B_PREFLIGHT.md y todavía no están implementados.
+B4B-01 — Valor interno de un consumo
+Se aprueba separar:
+1. promedio histórico snapshot del movimiento;
+2. valor interno realmente retirado del inventario.
+El valor interno autoritativo NO será q × promedio_redondeado.
+Con:
+- Q = cantidad antes;
+- V = valor interno antes;
+- q = cantidad consumida;
+- A = promedio vigente snapshot de 8 decimales.
+Si q = Q:
+D = V
+Es decir, agotar existencias debe dejar exactamente:
+Q' = 0
+V' = 0
+sin residuo.
+Si q < Q:
+D = HALF_UP(V × q / Q, 8)
+luego:
+Q' = Q - q
+V' = V - D
+A' = HALF_UP(V' / Q', 8)
+Esto distribuye proporcionalmente el valor interno real existente.
+El movimiento conserva además A como promedio snapshot previo al consumo.
+Si por precisión una salida parcial produce:
+- D <= 0, o
+- D >= V quedando Q' > 0,
+rechazar la operación por precisión insuficiente.
+Nunca corregirla aumentando silenciosamente la precisión.
+Registrar además la diferencia:
+allocation_delta = D - (q × A)
+o evidencia equivalente.
+Esa diferencia:
+- no es ingreso;
+- no es gasto;
+- no es movimiento adicional;
+- no modifica el snapshot A;
+- sirve únicamente para trazabilidad de valoración.
+Para futura rentabilidad, el valor interno asignado D es la fuente autoritativa del costo total del consumo. q × A es evidencia del promedio snapshot, no la fuente para reconstruir el valor retirado.
+B4B-02 — Devoluciones y residuos
+Cada devolución debe recuperar parte del valor interno D0 realmente asignado al consumo original, no simplemente r × A.
+Para un consumo original:
+- cantidad original q0;
+- valor asignado original D0;
+- cantidad ya devuelta qr;
+- valor ya reintegrado Vr;
+- nueva devolución r.
+Si la nueva devolución completa toda la cantidad restante:
+R = D0 - Vr
+Así, devolver el consumo completo siempre reintegra exactamente todo D0.
+Para una devolución parcial:
+R = HALF_UP((D0 - Vr) × r / (q0 - qr), 8)
+De esta manera los residuos de redondeo se distribuyen entre devoluciones y la última devolución absorbe exactamente el remanente.
+Luego:
+Q' = Q + r
+V' = V + R
+A' = HALF_UP(V' / Q', 8)
+La devolución conserva también el promedio/costo unitario snapshot del consumo original como evidencia.
+Registrar:
+return_allocation_delta = R - (r × costo_unitario_snapshot_original)
+o equivalente privado.
+Dos devoluciones concurrentes deben bloquear el mismo consumo original y revalidar cantidad y valor ya devueltos.
+Nunca:
+cantidad_devuelta_acumulada > cantidad_consumida_original.
+B4B-03 — Subcentavos
+El delta interno de inventario se conserva a 8 decimales.
+No ampliar quote_money globalmente ni cambiar contratos monetarios de fases anteriores.
+Un costo interno positivo puede presentarse monetariamente como ₡0,00 al redondear a dos decimales; eso no significa material gratuito.
+En vistas administrativas debe distinguirse cuando sea necesario, por ejemplo:
+Menor a ₡0,01
+o mostrando la precisión interna autorizada.
+Colaborador no recibe estos datos.
+La valoración y futuras agregaciones de costo utilizan el delta interno de 8 decimales y redondean el resultado monetario final cuando corresponda; no reconstruyen costos sumando únicamente valores visuales de dos decimales.
+Si un delta matemáticamente positivo colapsa a 0.00000000, rechazar la operación.
+B4B-04 — Ajustes administrativos
+Solo Admin.
+Siempre requieren motivo y auditoría.
+Ajuste negativo
+Usa exactamente el mismo algoritmo proporcional de salida que un consumo:
+- limitado por stock disponible;
+- sin pedido obligatorio;
+- snapshot del promedio;
+- valor interno proporcional;
+- agotamiento exacto a cero.
+Ajuste positivo con stock existente
+Si Q > 0, se valora manteniendo el promedio económico vigente:
+R = HALF_UP(V × q / Q, 8)
+y:
+Q' = Q + q
+V' = V + R
+No se solicita una nueva tasa, moneda o costo.
+Ajuste positivo con stock cero
+Si Q = 0, no existe promedio vigente utilizable.
+Admin debe proporcionar una valoración positiva explícita, usando el mismo contrato CRC/USD histórico aprobado en 4A:
+- importe original;
+- moneda;
+- tasa/procedencia cuando USD;
+- equivalente CRC;
+- motivo.
+Cero no permitido.
+Ajustes solo de valor
+No permitir en V1 movimientos que cambien valor sin cambiar cantidad.
+No implementar revaluaciones contables.
+B4B-05 — Correcciones y reversión
+Los movimientos continúan inmutables.
+Corrección de cantidad
+Se realiza mediante:
+devolución/compensación del movimiento incorrecto
+y, si corresponde:
+nuevo consumo
+Pueden ejecutarse en una única RPC/transacción administrativa.
+El nuevo consumo es un movimiento nuevo y utiliza la valoración vigente en el momento de la corrección, no reescribe el costo histórico anterior.
+Admin puede realizar una corrección vinculada incluso si el pedido actualmente está Delivered/Cancelled/Confirmed, siempre:
+- referenciando el movimiento original;
+- con motivo;
+- auditoría;
+- sin convertirlo en permiso para registrar consumos arbitrarios nuevos en esos estados.
+Corrección solamente de pedido/línea
+No devolver/reconsumir material únicamente para corregir atribución porque eso modificaría innecesariamente la valoración.
+Implementar una evidencia administrativa separada de corrección de atribución, manteniendo inmutable el movimiento original.
+Puede ser una tabla auxiliar como:
+inventory_movement_attribution_corrections
+o una solución relacional equivalente.
+Debe conservar:
+- movimiento original;
+- order_id anterior;
+- order_item_id anterior;
+- order_id corregido;
+- order_item_id corregido;
+- actor;
+- motivo;
+- timestamp;
+- revisión.
+Las vistas futuras utilizan la atribución vigente corregida, mientras el historial conserva todas las anteriores.
+El pedido destino debe haber sido confirmado alguna vez.
+Si se informa línea, debe pertenecer al pedido destino.
+Reversión de entrada 4A
+La unidad mínima reversible es la línea de recepción.
+Puede revertirse solo cuando no exista ningún movimiento posterior del mismo material dependiente de esa línea/secuencia.
+La compensación debe restaurar exactamente:
+- cantidad anterior;
+- valor anterior;
+- promedio anterior.
+Una recepción multilínea puede tener una acción “revertir recepción completa”, pero debe ser atómica:
+- todas las líneas son reversibles, o
+- ninguna se revierte.
+Si existe cualquier movimiento posterior dependiente, no reconstruir el pasado; usar ajuste actual conforme D-22.
+No borrar la recepción original.
+B4B-06 — Devoluciones por Colaborador
+Colaborador activo puede registrar devolución vinculada a cualquier consumo operativo del pedido al que tiene acceso, no solamente consumos creados por él.
+Esto evita depender de quién realizó materialmente el registro anterior.
+Para Colaborador:
+- pedido debe estar actualmente in_production o ready;
+- devolución siempre ligada a consumo original;
+- motivo obligatorio;
+- no costos en request/response/UI;
+- cantidad dentro del remanente retornable.
+En otros estados:
+- Colaborador no puede devolver;
+- Admin puede realizar devolución/corrección posterior con motivo y auditoría.
+Un material actualmente inactivo sí puede recibir una devolución ligada a un consumo anterior.
+Eso no habilita nuevas compras ordinarias del material.
+B4B-07 — Líneas y cronología
+Consumo ordinario nuevo
+Si order_item_id se informa:
+- debe pertenecer al mismo pedido;
+- debe ser una línea actualmente válida/activa para operación.
+No permitir consumo ordinario nuevo contra una línea desactivada/retirada.
+Si la línea se desactiva posteriormente, los consumos históricos conservan su referencia.
+Una corrección administrativa histórica puede referirse a una línea inactiva existente cuando sea necesario preservar la atribución real.
+Fecha efectiva
+Colaborador:
+- fecha/hora efectiva del servidor;
+- no backdating.
+Admin puede indicar fecha histórica únicamente si:
+- no es futura;
+- effective_at >= confirmed_at del pedido;
+- effective_at >= last_effective_at del material;
+- no obliga a insertar el movimiento antes de historia ya valorada.
+Para movimientos con igual effective_at, material_sequence define orden inequívoco.
+Un consumo ordinario, incluso histórico Admin, requiere que el pedido esté actualmente in_production o ready.
+Para pedidos cerrados u otros estados, únicamente se permiten correcciones/devoluciones vinculadas a un movimiento existente, no nuevos consumos arbitrarios.
+Correcciones/devoluciones deben tener effective_at >= effective_at del movimiento origen y respetar también la secuencia consolidada del material.

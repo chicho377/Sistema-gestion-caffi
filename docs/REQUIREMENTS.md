@@ -1,5 +1,7 @@
 # REQUIREMENTS.md
 
+> Vigencia de inventario 4B: D-23 complementa D-22 y prevalece en valoración de salidas/devoluciones según la sección final de este documento. Implementación todavía no autorizada.
+
 # Mini Sistema para Emprendimiento de Crochet
 
 Las decisiones aprobadas para V1 y su trazabilidad se encuentran en [DECISIONS.md](DECISIONS.md). Los puntos allí marcados como pendientes no constituyen reglas funcionales aprobadas.
@@ -704,3 +706,18 @@ Compra/saldo inicial: cantidad, total original, equivalente CRC y costo unitario
 Saldo inicial Admin/motivo, solo si no existe ningún movimiento previo del material; una sola operación inicial. Congelar unidad en servidor/BD; multilínea atómica con bloqueos determinísticos, revisión y UUID estable, sin actualizaciones perdidas. Separar costos de historial operativo. Auditoría completa y vínculo opcional expenses sin automatismos. Alerta stock <= mínimo derivada.
 
 Tras commit documental se autoriza exclusivamente implementar 4A y sus pruebas locales/simuladas/DEV reales, sin 4B–4E ni tag final. Esquema actualizado en PHASE4A_PREFLIGHT.md; evidencia de ejecución se registrará en PHASE4A_VERIFICATION.md. No cambiar D-01 a D-21 ni historia.
+
+## D-23 — Requisitos 4B resueltos; implementación pendiente
+
+El texto íntegro de B4B-01 a B4B-07 está en DECISIONS.md D-23. Prevalece sobre RF-INV-07/11 en el promedio restante y en el valor de devolución; las secciones D-22 se conservan como historia documental.
+
+- **RF-INV-14 — Consumo proporcional:** cantidad q positiva hasta 4 decimales, q <= Q; snapshot A previo hasta 8. Si q=Q, D=V y Q'=V'=0. Si q<Q, D=HALF_UP(V*q/Q,8), Q'=Q-q, V'=V-D, A'=HALF_UP(V'/Q',8). Rechazar D<=0 o D>=V si queda cantidad. Evidencia privada allocation_delta=D-q*A; no ingreso/gasto/movimiento. D es costo total autoritativo para futuras agregaciones, no q*A.
+- **RF-INV-15 — Devolución valorada:** origen obligatorio; q0/D0 originales, qr/Vr acumulados y r nueva cantidad. Si r=q0-qr, R=D0-Vr; si parcial, R=HALF_UP((D0-Vr)*r/(q0-qr),8). Q'=Q+r, V'=V+R, A'=HALF_UP(V'/Q',8). Conservar snapshot original y return_allocation_delta=R-r*A_original. Bloquear origen y revalidar acumulados; nunca devolver más cantidad que la original ni reescribirla.
+- **RF-INV-16 — Subcentavos:** delta interno hasta 8 decimales, rechazar positivo que colapse a cero. Presentación final a 2; Admin distingue valores menores a CRC 0,01; Colaborador no recibe costos. Agregar deltas internos antes de redondear resultado final. quote_money y contratos anteriores no cambian.
+- **RF-INV-17 — Ajustes Admin:** motivo/auditoría siempre. Negativo utiliza salida proporcional y stock disponible, sin pedido obligatorio. Positivo con Q>0: R=HALF_UP(V*q/Q,8), Q'=Q+q, V'=V+R; sin moneda/tasa/costo nuevos. Con Q=0 exige valoración positiva explícita y evidencia CRC/USD del contrato 4A. Sin ajustes de valor sin cantidad ni revaluaciones contables.
+- **RF-INV-18 — Correcciones:** cantidad mediante devolución/compensación y, si corresponde, consumo nuevo a valoración vigente; posible transacción conjunta Admin. En confirmed/delivered/cancelled solo corrección vinculada con motivo, no consumo arbitrario. Atribución pedido/línea se corrige en evidencia separada con before/after, actor, fecha, motivo y revisión; no devuelve/reconsume ni modifica movimiento original. Destino confirmado alguna vez; línea del destino, incluso inactiva para preservar historia.
+- **RF-INV-19 — Reversión:** unidad mínima línea de recepción sin movimientos posteriores dependientes del mismo material; compensación restaura exactamente cantidad/valor/promedio previos. Reversión multilínea opcional atómica: todas o ninguna. Si existen dependencias, ajuste actual; sin reconstrucción pasada, eliminación ni devolución a proveedor.
+- **RF-INV-20 — Operación por rol:** consumo ordinario Admin/Colaborador solo in_production/ready, pedido obligatorio y línea opcional activa del mismo pedido. Colaborador devuelve cualquier consumo operativo accesible, no solo propio, en esos estados, motivo obligatorio y sin costos en request/response/UI. Admin devolución/corrección posterior motivada. Material inactivo admite consumo con stock y devolución ligada, no compra ordinaria. Inactivo/anónimo sin acceso.
+- **RF-INV-21 — Cronología:** Colaborador usa hora servidor sin backdating. Admin histórica no futura, >= confirmed_at del pedido y >= last_effective_at del material. Mismo instante ordenado por material_sequence. Devolución/corrección >= instante origen y secuencia consolidada. No insertar antes de historia valorada. Referencias históricas sobreviven desactivación de líneas. Receta no genera consumos.
+
+Sin gastos automáticos, rentabilidad, cronómetro ni envíos. Preflight técnico y autorización limitada pendiente en [PHASE4B_PREFLIGHT.md](PHASE4B_PREFLIGHT.md).

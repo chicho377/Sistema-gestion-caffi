@@ -560,3 +560,19 @@ Ruta `/inventario`: listado paginado/búsqueda y mínimos; `/inventario/[id]`: d
 La UI conserva UUID y campos después de errores, bloquea reenvío mientras recarga revisión y usa SweetAlert2/Sonner. RLS separa datos financieros de movimientos operativos antes de responder al navegador. El catálogo consulta si existe primer movimiento para explicar la unidad congelada; el trigger mantiene la restricción ante API directa.
 
 Checkpoint 6679da3 y evidencia en [PHASE4A_VERIFICATION.md](PHASE4A_VERIFICATION.md). Sin dependencias nuevas, Auth/Storage nuevos ni funcionalidades 4B–4E. La implementación queda para revisión sin tag final.
+
+## D-23 — Diseño técnico 4B, todavía sin implementación
+
+Resolución íntegra en DECISIONS.md D-23; requisitos RF-INV-14..21. D-23 prevalece sobre las frases históricas D-22 relativas a promedio restante constante y devolución valorada solo como cantidad por costo unitario. 4A cerrada en aec1fb6; preservar sus snapshots/migraciones. Esta autorización es exclusivamente documental e inspección SELECT, sin DDL ni código de aplicación.
+
+Reutilizar diario, costos privados y proyecciones de 4A. El delta interno D/R a 8 decimales es autoritativo; snapshot A y diferencia exacta hasta 12 posiciones son evidencia. Consumo parcial distribuye V*q/Q con HALF UP y recalcula promedio restante; agotamiento deja Q=V=0. Devolución reparte valor aún retornable y absorbe remanente al completar cantidad. Algoritmos completos en D-23 y PHASE4B_PREFLIGHT. No consultar material_costs para reconstruir historia.
+
+RPC atómicas propuestas para consumir, devolver, ajustar, corregir cantidad, corregir atribución y revertir línea/recepción. Bloqueos compatibles con 4A/3B: perfil vigente, pedidos en orden UUID cuando haya varios, materiales en orden UUID, proyecciones y movimientos origen. Revalidar revisiones, estado actual, stock, acumulados retornables, UUID/idempotencia y cronología bajo bloqueo. Conflicto PT409; no reintento automático silencioso. Transiciones 3B y consumo comparten lock del pedido, sin inventar devolución automática al cancelar.
+
+La corrección de atribución necesita evidencia relacional separada e inmutable, revisión y auditoría; no movimientos físicos ni alteración financiera. Vistas futuras resuelven atribución vigente, preservando cadena anterior. Retorno/corrección posterior referencia origen y motivo; no permiso general de consumo en estados cerrados. Reversión de recepción completa opcional requiere validar todas sus líneas antes de compensar cualquiera.
+
+No ampliar inventory_actor() de 4A: permanece Admin para recepción y vínculo a gasto. Nuevo helper para operaciones autorizadas de Colaborador, perfil vigente; no metadata editable. Separación física de costos, grants mínimos, wrappers invoker y operaciones privadas cuando requieran privilegios, search_path vacío, RLS; sin datos financieros en HTML/RSC/payload operativo ni errores. Inactivo/anónimo cero acceso.
+
+UI futura desde pedido/línea activa: consumo, remanente retornable, historial con atribución corregida; Admin ajustes/reversión y evidencia financiera separada. Loading/vacío/error/409/red, conservar formulario/UUID, SweetAlert2 crítico y Sonner éxito. Cinco anchos 320/375/768/1024/1440, tarjetas móviles, Lucide, tokens, controles 44 px y reduced-motion.
+
+Inspección exacta de seis CHECK y tres NOT NULL, cambios aditivos, función de recepción y preflight DEV en [PHASE4B_PREFLIGHT.md](PHASE4B_PREFLIGHT.md). No autorización DROP CONSTRAINT ni migraciones. Mantener A51, aislamiento order_counters e INFO Performance; sin avance 4C/4D/4E.
