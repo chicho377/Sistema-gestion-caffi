@@ -129,6 +129,8 @@ export function validateFields(fields: Field[], data: FormData): Row {
     if (v.length > (f.max ?? 3000))
       throw new Error(f.label + ": texto demasiado largo.");
     if (f.type === "number") {
+      if (f.name === "hourly_rate" && (!/^\d+(\.\d{1,2})?$/.test(v) || !/[1-9]/.test(v)))
+        throw new Error("La tarifa debe ser positiva, con máximo dos decimales, o quedar vacía.");
       if (
         !/^\d+(\.\d+)?$/.test(v) ||
         !Number.isFinite(Number(v)) ||

@@ -926,3 +926,133 @@ Autorizada implementación exclusivamente 4B después del checkpoint 06cfacd, co
 D-23 y su aclaración de precisión están implementadas exclusivamente para consumos, devoluciones y correcciones. Se reutilizan diario/costos/proyecciones 4A; evidencia aditiva de atribución y ajustes sin stock, RPC transaccional inventory_operation, vistas operativas sin costos y vista financiera Admin. Consumo/devolución proporcionales a 8 decimales, final exacto, movimientos inmutables, revisión e idempotencia, lock compartido con pedidos 3B y auditoría atómica. No cambia ninguna política de valoración aprobada.
 
 Migraciones nuevas 20261003040656, 20261003042715 y 20261003092616 aplicadas solo a SIGCA DEV; 22 locales/remotas coincidentes. Se ejercieron únicamente las excepciones de seis CHECK y tres NOT NULL autorizadas; la función 4A inventory_receipt_complete conserva contrato con comparación nullable. Detalle de objetos, permisos, pruebas locales/DEV/inducidas y limitaciones en [PHASE4B_VERIFICATION.md](PHASE4B_VERIFICATION.md). Pantalla de operaciones desde inventario/pedido, historial paginado y evidencia de atribuciones. Sin nuevas dependencias, variables, buckets ni cambios de Auth. A51 permanece pendiente para producción. No implementa 4C/4D/4E ni crea tag final.
+
+
+## D-24 — Control de horas (2026-10-04)
+
+RESOLUCIÓN B4C-01 A B4C-05 — FASE 4C
+Documenta estas decisiones como D-24 — Control de horas.
+No reescribas D-01 a D-23.
+B4C-01 — Subsegundos y sesiones de 0 segundos
+La duración autoritativa se calcula primero con toda la precisión de timestamps:
+net_duration = (fin - inicio) - total_pausas
+Después se convierte una sola vez a segundos enteros mediante truncamiento hacia abajo:
+worked_seconds = FLOOR(net_duration_seconds)
+No redondear cada intervalo ni utilizar HALF UP para tiempo.
+Ejemplos:
+- 10,9 s → 10 s
+- 0,8 s → 0 s
+Se permite conservar una sesión terminada de 0 segundos.
+No borrarla ni convertirla artificialmente en 1 segundo. Sigue siendo evidencia histórica de una sesión iniciada/finalizada.
+Debe cumplir:
+worked_seconds >= 0.
+Los timestamps exactos y las pausas siguen siendo la fuente histórica; worked_seconds es la duración consolidada.
+B4C-02 — Tarifa válida
+settings.hourly_rate puede permanecer NULL mientras aún no esté configurada.
+Para poder iniciar una sesión:
+debe existir una tarifa estrictamente positiva.
+No aceptar 0 como tarifa válida.
+Reglas:
+- CRC únicamente en V1;
+- importe > 0;
+- máximo 2 decimales de entrada;
+- numeric/decimal;
+- nunca float.
+La tarifa aplicada se congela al iniciar y permanece inmutable durante toda la sesión.
+Cambiar Configuración posteriormente no modifica una sesión abierta ni terminada.
+Para una sesión histórica manual, Admin proporciona explícitamente la tarifa histórica; nunca se copia silenciosamente la actual.
+No inventes un valor para DEV. Mientras hourly_rate continúe NULL, el módulo puede implementarse pero Play debe quedar bloqueado con mensaje de configuración faltante.
+No es necesario eliminar el constraint antiguo que permite cero si puede agregarse una regla más estricta y compatible:
+hourly_rate IS NULL OR (hourly_rate > 0 AND máximo 2 decimales)
+Si implementar esto requiriera sustituir/eliminar una restricción existente en vez de agregar una nueva, detente y solicita autorización con nombre y expresión exactos.
+B4C-03 — Históricos y cronología
+Solo Admin puede crear sesiones históricas.
+Puede hacerlo para un pedido que haya sido confirmado alguna vez, incluso si actualmente está:
+- in production;
+- ready;
+- delivered;
+- cancelled;
+- o fue reabierto.
+Esto permite reconstruir trabajo realmente realizado sin depender del estado actual del pedido.
+Reglas:
+- started_at >= confirmed_at;
+- finished_at > started_at;
+- ninguna fecha futura;
+- sesión histórica siempre nace finished;
+- trabajador puede estar actualmente inactivo;
+- línea puede estar actualmente inactiva, pero debe pertenecer al pedido;
+- no se permiten solapamientos con otras sesiones del mismo trabajador;
+- tarifa histórica explícita;
+- motivo obligatorio;
+- actor Admin vigente;
+- auditoría.
+Si el pedido está actualmente Delivered y tiene delivered_at activo:
+finished_at <= delivered_at.
+Si está Cancelled y existe timestamp autoritativo de cancelación:
+finished_at <= cancelled_at.
+Si el pedido fue reabierto y vuelto a entregar, usar el último delivered_at activo, conforme al modelo de ciclo ya aprobado.
+No exigir reconstruir que cada minuto histórico coincida exactamente con un antiguo estado in_production; eso convertiría auditoría de estados en requisito operativo para cargar historia.
+Correcciones de fechas del pedido
+correct_order_dates nunca debe modificar sesiones.
+Si una corrección de confirmed_at, delivered_at u otra fecha autoritativa dejara una sesión existente cronológicamente inválida, rechazar la corrección del pedido con conflicto/validación.
+No reajustar horas automáticamente.
+B4C-04 — Modelo de correcciones
+Se aprueba la opción:
+fila vigente corregida mediante RPC controlada + auditoría completa.
+No crear sistema relacional de versiones de sesiones para V1.
+La sesión y sus pausas pueden corregirse únicamente mediante operación Admin explícita.
+Reglas:
+- sesión debe estar finished;
+- Admin activo;
+- motivo obligatorio;
+- revisión/optimistic concurrency;
+- before/after completo;
+- auditoría;
+- validar nuevamente timestamps;
+- validar pausas;
+- validar no solapamiento;
+- recalcular worked_seconds;
+- tarifa histórica permanece inmutable;
+- DML directo bloqueado.
+La corrección puede agregar, corregir o eliminar intervalos de pausa dentro de la sesión siempre que el resultado completo sea válido.
+No borrar evidencia de auditoría anterior.
+B4C-05 — Actividad y atribución
+Admin puede corregir también:
+- activity;
+- order_id;
+- order_item_id.
+Solo en una sesión terminada y mediante la misma operación administrativa controlada:
+- motivo;
+- revisión;
+- before/after;
+- auditoría.
+No se puede cambiar user_id/trabajador.
+Si el trabajador fue incorrecto, no reinterpretar silenciosamente la sesión como trabajo de otra persona. Ese caso requeriría una decisión futura específica.
+Para cambio de pedido:
+- pedido destino debe haber sido confirmado alguna vez;
+- cronología de la sesión debe cumplir B4C-03 respecto del nuevo pedido.
+Para cambio de línea:
+- debe pertenecer al pedido destino;
+- puede ser una línea histórica/inactiva existente.
+Cambiar actividad o atribución:
+- no modifica timestamps por sí mismo;
+- no modifica worked_seconds;
+- no modifica tarifa;
+- no recalcula costos futuros.
+HISTORIAL VISIBLE PARA COLABORADOR
+Queda ratificado lo ya identificado en el preflight:
+Colaborador puede ver en el historial operativo del pedido sesiones de otros trabajadores con:
+- trabajador;
+- actividad;
+- inicio;
+- pausas;
+- fin;
+- duración.
+Nunca:
+- tarifa;
+- costo;
+- configuración financiera;
+- evidencia financiera.
+Esto ya se deriva de B4-08.
+
+Autorizada exclusivamente Fase 4C conforme a esta resolución. Sin 4D/4E ni tag final. Se conservan D-01 a D-23. Implementación y evidencia se registran en PHASE4C_VERIFICATION.md.

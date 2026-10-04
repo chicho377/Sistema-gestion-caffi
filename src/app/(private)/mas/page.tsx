@@ -8,6 +8,7 @@ import {
   Settings,
   Wallet,
   Receipt,
+  Timer,
 } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { logout } from "@/features/auth/actions";
@@ -35,6 +36,7 @@ export default async function More() {
           Productos
         </Link>
         <Link className="button secondary" href="/inventario">Inventario</Link>
+        <Link className="button secondary" href="/tiempo"><Timer size={20}/>Control de horas</Link>
         <Link className="button secondary" href="/materiales">
           <Layers size={20} />
           Materiales

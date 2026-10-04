@@ -1161,3 +1161,12 @@ details[open] > summary {
 
 .expense-status { white-space: nowrap; }
 .expense-status[data-status="voided"] { color: var(--color-danger); border-color: var(--color-danger); }
+
+/* Fase 4C: operativo y usable también en 320 px. */
+.work-indicator { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:12px; margin-bottom:16px; border:1px solid var(--color-border); border-radius:14px; background:#FFF0F6; }
+.work-indicator a { min-height:44px; display:inline-flex; align-items:center; color:#A70459; }
+.work-clock { display:block; font-variant-numeric:tabular-nums; font-size:1.15rem; }
+.work-edit { min-width:0; max-width:100%; }
+.work-pause { display:grid; gap:8px; min-width:0; }
+.work-edit input, .work-edit select { min-width:0; max-width:100%; }
+@media(min-width:768px){ .work-pause { grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; align-items:end; } }

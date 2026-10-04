@@ -7,12 +7,14 @@ test('3E: entrega privada de imágenes solo modifica dos policies; conserva cont
  try {
   await db.exec((await readFile('tests/phase3a.test.mjs','utf8')).match(/await db.exec\(`([\s\S]*?)`\);/)[1]);
   const fingerprints=async()=>Promise.all(['3a','3b','3c','3d'].map(async p=>(await db.query(await readFile(`tests/sql/phase${p}-schema.sql`,'utf8'))).rows));
-  let before;
+  let before,after;
   for(const f of (await readdir('supabase/migrations')).filter(f=>f.endsWith('.sql')).sort()){
    if(f.includes('phase3e')&&!before)before=await fingerprints();
    await db.exec(await readFile('supabase/migrations/'+f,'utf8'));
+   if(f.includes('phase3e'))after=await fingerprints();
   }
-  const after=await fingerprints();
+  // Compare the 3E change itself; later authorized integrations (4C's order guard)
+  // have their own regression tests and must not be attributed to migration 3E.
   for(let i=0;i<4;i++){const b=before[i][0].fingerprint,a=after[i][0].fingerprint;for(const k of Object.keys(b))if(k!=='policies')assert.deepEqual(a[k],b[k],`Contrato ${i}/${k}`);}
   assert.deepEqual((await db.query("select policyname,qual from pg_policies where schemaname='storage' order by policyname")).rows,[{policyname:'catalog_images_read',qual:'false'},{policyname:'expense_receipts_read',qual:'false'},{policyname:'order_references_read',qual:'false'}]);
   await mkdir('test-results',{recursive:true});

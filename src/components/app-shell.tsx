@@ -21,6 +21,7 @@ import {
   Wallet,
   Receipt,
 } from "lucide-react";
+import { WorkIndicator } from "./work-timer";
 import { Brand } from "./brand";
 import { logout } from "@/features/auth/actions";
 import { createClient } from "@/lib/supabase/client";
@@ -82,8 +83,9 @@ export function AppShell({
         <House size={20} />
         Inicio
       </Link>
+      <Link href="/tiempo" onClick={() => setOpen(false)}><Timer size={20}/>Tiempo</Link>
       {[
-        [Timer, "Tiempo"],
+
         [Truck, "Envíos"],
       ].map(([Icon, label]) => {
         const ItemIcon = Icon as typeof House;
@@ -99,6 +101,7 @@ export function AppShell({
           </span>
         );
       })}
+
       {[
         [ClipboardList, "Pedidos", "/pedidos"],
         [UsersRound, "Clientes", "/clientes"],
@@ -207,7 +210,7 @@ export function AppShell({
           </div>
         </header>
         <main id="main-content" className="workspace-main">
-          {children}
+          <WorkIndicator />{children}
         </main>
         <footer className="workspace-footer">
           SIGCA <span>·</span> Hecho para acompañar tu creatividad

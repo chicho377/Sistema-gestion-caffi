@@ -973,3 +973,17 @@ Autorizada implementación exclusivamente 4B después del checkpoint 06cfacd, co
 D-23 y su aclaración de precisión están implementadas exclusivamente para consumos, devoluciones y correcciones. Se reutilizan diario/costos/proyecciones 4A; evidencia aditiva de atribución y ajustes sin stock, RPC transaccional inventory_operation, vistas operativas sin costos y vista financiera Admin. Consumo/devolución proporcionales a 8 decimales, final exacto, movimientos inmutables, revisión e idempotencia, lock compartido con pedidos 3B y auditoría atómica. No cambia ninguna política de valoración aprobada.
 
 Migraciones nuevas 20261003040656, 20261003042715 y 20261003092616 aplicadas solo a SIGCA DEV; 22 locales/remotas coincidentes. Se ejercieron únicamente las excepciones de seis CHECK y tres NOT NULL autorizadas; la función 4A inventory_receipt_complete conserva contrato con comparación nullable. Detalle de objetos, permisos, pruebas locales/DEV/inducidas y limitaciones en [PHASE4B_VERIFICATION.md](PHASE4B_VERIFICATION.md). Pantalla de operaciones desde inventario/pedido, historial paginado y evidencia de atribuciones. Sin nuevas dependencias, variables, buckets ni cambios de Auth. A51 permanece pendiente para producción. No implementa 4C/4D/4E ni crea tag final.
+
+## Modelo autorizado 4C — D-24
+
+work_sessions: UUID, order_id obligatorio, order_item_id opcional del mismo pedido, user_id inmutable, activity opcional, estado running/paused/finished, started_at/finished_at exactos timestamptz, worked_seconds consolidado bigint, revisión y timestamps/actores técnicos. Una sesión abierta global por trabajador, sin solapamientos [inicio,fin); varias personas por pedido. Cero segundos permitido.
+
+work_pauses: sesión, paused_at, resumed_at nullable. Máximo una pausa abierta; paused exige una abierta, running/finished ninguna. Intervalos contenidos, ordenados, no solapados. Finalizar paused cierra intervalo con el mismo finished_at.
+
+work_session_rates: relación 1:1, tarifa CRC numeric positiva de máximo dos decimales, procedencia/actor/fecha; separada del acceso operativo e inmutable. Configuración permite NULL; agregar constraint más estricto compatible sin eliminar el previo. No inventar tarifa DEV.
+
+work_session_requests o equivalente: UUID, actor, operación, parámetros normalizados/huella, sesión y revisión resultante; evidencia idempotente, sin filtrar tarifa. Sin DML de aplicación. Operaciones/auditoría atómicas y revisión optimista; perfiles → solicitudes → pedidos → sesión → pausas.
+
+Históricos/correcciones aplican B4C-03/05 de D-24: pedido confirmado alguna vez, inicio >= confirmed_at, fin > inicio para histórico, no futuro, límites delivered_at/cancelled_at vigentes, trabajador/línea inactivos permitidos históricamente. Corrección de fila vigente y pausas solo Admin finished con motivo y before/after completo, sin modificar user_id/tarifa; recalcular FLOOR del neto exacto. No tabla de versiones. Corregir atribución requiere validar nuevo pedido/línea y no cambia tiempos por sí solo. Fecha autoritativa del pedido incompatible con sesiones se rechaza.
+
+RLS operativa para perfiles activos, tarifas solo Admin, anon/inactivo sin acceso. Índices por pedido/línea/trabajador, unicidad parcial sesión abierta y pausa abierta; integridad de intervalos y coherencia entre tablas en BD. Sin cambios de inventario, pagos, ingresos, gastos ni objetos 4D/4E.
