@@ -1,6 +1,6 @@
 # Fase 4B — Consumos, devoluciones y correcciones
 
-Fecha: 2026-10-03. Proyecto exclusivo: SIGCA DEV `pysgfnwsycgoneaecgcl` (ACTIVE_HEALTHY). Base normativa: D-22/P4A, D-23 y su aclaración matemática de devoluciones. Estado: implementación y verificación para revisión del usuario; no constituye autorización de 4C/4D/4E ni cierre de producción.
+Fecha: 2026-10-03. Proyecto exclusivo: SIGCA DEV `pysgfnwsycgoneaecgcl` (ACTIVE_HEALTHY). Base normativa: D-22/P4A, D-23 y su aclaración matemática de devoluciones. Estado de implementación inicial: verificación para revisión del usuario; no constituye autorización de 4C/4D/4E ni cierre de producción.
 
 ## Alcance e implementación
 
@@ -130,3 +130,95 @@ Checkpoint documental existente: `06cfacd` (`docs: define phase 4b inventory con
 No se avanzó a 4C/4D/4E.
 
 Resumen de evidencias contadas: **564 comprobaciones contra DEV real** (71 API 4B + 83 UI 4B + 410 regresión), **2 fallos de red inducidos** y **1 escenario SQL DEV de fallo de auditoría inducido**, separados de 27 pruebas locales y 26 E2E simulados. No se suman ejecuciones repetidas ni se confunden estos conteos con los 26 criterios funcionales de la matriz. Git: 9 archivos modificados y 16 nuevos; todos correspondientes a documentación, aplicación, migraciones y pruebas 4B. Diff check y verificación de secretos correctos.
+
+
+## Auditoría final 4B — 2026-10-03
+
+Esta sección prevalece sobre los conteos de implementación anteriores. Checkpoint previo autorizado: **0702eca** (`feat: implement phase 4b inventory consumption and corrections`), 25 archivos; Git limpio después del commit. Antes del checkpoint se verificaron secretos, artefactos, 22 migraciones equivalentes y dry-run vacío. Un espacio final detectado al revisar archivos recién agregados fue corregido en el mismo commit antes de iniciar la auditoría.
+
+La auditoría añade pruebas y documentación; no cambia código de aplicación, migraciones, decisiones funcionales, Auth ni permisos. Sin tag, push o avance a 4C/4D/4E.
+
+### Matriz final de los veinte criterios solicitados
+
+| Requisito | Estado | Evidencia | Entorno | Observación |
+|---|---|---|---|---|
+| A4B-01 Consumo y valoración | COMPLETO | `phase4b-real.mjs`; cadenas auditadas con BigInt | DEV real JWT | Parcial/total/fraccionario/subcentavo; material inactivo; Q=V=0 y A=NULL |
+| A4B-02 Cadena extensa | COMPLETO | `phase4b-audit-real.mjs`, reconstrucción por movimiento | DEV real JWT | Secuencia mixta exacta solicitada; final positivo, cero y positivo después de cero; verifica retornables |
+| A4B-03 Devoluciones | COMPLETO | Escenarios compartidos y carreras específicas | DEV real JWT | Parciales, última exacta, R=0/R=v_rem rechazados, exceso y concurrencia |
+| A4B-04 Ajustes | COMPLETO | Cadenas/roles JWT + `phase4b-audit-rates.sql` | DEV real; tasas controladas inducidas | CRC, USD actual/fallback/histórico/faltante; motivo y cantidad; no revaluación pura |
+| A4B-05 Reversiones 4A | COMPLETO | Escenarios de reversión simple/multilínea y carreras | DEV real JWT | Restaura Q/V/A; rechaza posteriores y segundo intento; originales conservados |
+| A4B-06 Correcciones | COMPLETO | Original y costo comparados íntegros; reconstrucción; before/after | DEV real JWT | Cantidad compensada; nuevo consumo proporcional vigente; atribución sin alterar inventario |
+| A4B-07 Estados | COMPLETO | Matriz quote/confirmed/in_production/ready/delivered/cancelled | DEV real JWT | Colaborador solo estados operativos; Admin cerrado solo vínculo previo; ambos ganadores de carrera observados |
+| A4B-08 Concurrencia | COMPLETO | Suites base/ampliada entre sesiones independientes | DEV real JWT | Incluye reversión/consumo, corrección/corrección, UUID y revisión; un commit/409 cuando corresponde |
+| A4B-09 Constraints | COMPLETO | Huellas antes/después local y `phase4b-audit-constraints.sql` | Local + clones temporales en DEV real | Solo 6 CHECK y 3 NOT NULL; 8 combinaciones inválidas rechazadas; migraciones previas idénticas a cierre 4A |
+| A4B-10 Regresión matemática 4A | COMPLETO | Suites 4A recorrido, precisión y auditoría; comparación exacta de función | Local + DEV real JWT | Misma función salvo dos comparaciones nullable; apertura, entradas sucesivas, USD, multilínea, carreras y rollback |
+| A4B-11 Separación por rol | COMPLETO | Data API, vistas, evidencia financiera y respuestas de Server Actions | DEV real JWT + UI | Sin costos/promedios/tasas/deltas para Colaborador; no depende de ocultar controles |
+| A4B-12 Matriz RLS | COMPLETO | 9 tablas × 4 roles; tabla detallada debajo | DEV real JWT | SELECT y tres DML directos más RPC pertinente; JWT previamente vigente para inactivo |
+| A4B-13 Inmutabilidad | COMPLETO | DML 42501 y originales intactos tras correcciones | DEV real JWT | UPDATE/DELETE usan filtros contradictorios para no borrar/modificar aun ante un defecto; sin DML autorizado directo |
+| A4B-14 Cronología | COMPLETO | Futuro/backdating, igual timestamp y secuencia, rechazo antes de origen | DEV real JWT | Admin no inserta antes de historia consolidada; Quote no permite atribución/consumo |
+| A4B-15 Idempotencia | COMPLETO | Reenvío simultáneo y secuencial por seis operaciones | DEV real JWT | Consumo, devolución, ajuste, reversión, atribución y cantidad: solo un efecto |
+| A4B-16 Rollback | COMPLETO | `phase4b-audit-failures.sql` | DEV real, fallos inducidos | 7 puntos: auditoría, movimiento, costo, balance, valoración, atribución y segunda línea; hashes íntegros |
+| A4B-17 UI/responsive | COMPLETO | `phase4b-audit-ui-real.mjs` | UI contra DEV; red inducida separada | Ambos roles/cinco anchos; material inactivo, línea, corrección Admin, foco, reduced-motion, red y conflictos; sin fuga en Server Actions |
+| A4B-18 Regresión Fase 3 | COMPLETO | 3E integrado y regresión 4A financiera/Storage | DEV real JWT + local | Auth/perfiles, consecutivos, pagos, estados, manual_income, gastos y tres buckets privados; inventario no modifica esas fuentes |
+| A4B-19 Alcance | COMPLETO | Git diff y migraciones sin cambios | Revisión local + DEV | Sin cronómetro/envíos/rentabilidad/reportes/receta automática/devolución proveedor/revaluación pura |
+| A4B-20 Calidad | COMPLETO | npm, Advisors, secretos, huellas/dry-run | Local + DEV real | 28 locales, 26 E2E simulados; build/typecheck; sin vulnerabilidades npm de producción |
+
+### Distinción de entornos y límites de la evidencia
+
+- **Local:** PostgreSQL PGlite ejecuta migraciones y compara constraints, atributos NOT NULL y funciones antes/después. Las migraciones hasta 4A se comparan con el commit de cierre `aec1fb6`; no hay ediciones. `inventory_receipt_complete()` conserva exactamente su cuerpo salvo las dos comparaciones NULL autorizadas, además de firma/configuración/grants.
+- **DEV real JWT:** operaciones HTTP de Admin/Colaborador con sesiones independientes; inactivación/restauración temporal; fixtures etiquetados y conservados. Las carreras verifican resultados persistidos, no mocks. Ambos ganadores consumo/transición se observaron usando solicitudes desde dos sesiones con pequeños desfases de envío, sin sustituir locks o simular resultados.
+- **DEV real con estados inducidos:** tasas sintéticas actual/fallback/histórica/faltante dentro de BEGIN/ROLLBACK; no se afirma consulta real al proveedor durante esos casos. La caché original se restaura completamente. Fallos de siete etapas mediante triggers temporales dentro de una transacción revertida. Cero triggers, tasas futuras o fixtures transaccionales persistentes tras terminar.
+- **Constraints en DEV:** ocho combinaciones inválidas se prueban sobre clones temporales `LIKE ... INCLUDING ALL` de tablas reales, con las mismas expresiones CHECK; no se deshabilitan triggers ni se mutan movimientos históricos. Las FKs/RLS se comprueban por separado mediante catálogo y JWT sobre tablas reales.
+- **UI contra DEV:** pruebas con servidor local de producción y datos reales; los abortos de POST se etiquetan como red inducida. No se almacenan sesiones ni credenciales en capturas/JSON. Foco, tamaño de input y movimiento reducido son comprobaciones concretas, no una certificación universal de accesibilidad.
+- **E2E simulado:** 26 pruebas de regresión con fixture; no cuentan como RLS ni concurrencia real.
+
+Hallazgos durante construcción de pruebas: un toast de éxito anterior podía adelantar la lectura de la devolución siguiente en el test. Se cambió la sincronización para comprobar el remanente retornable persistido antes de tomar la huella para la corrección. La base conservó la devolución y la atribución como operaciones separadas; no se justificó cambiar la implementación por ese fallo del test.
+
+A51 permanece **PENDIENTE antes de producción**, fuera de los veinte criterios funcionales DEV. `order_counters` conserva INFO aceptado por aislamiento; Performance se documenta sin eliminar índices. No hay nuevas decisiones funcionales detectadas.
+
+### Matriz RLS consolidada (36 combinaciones con JWT reales)
+
+SELECT refleja filas conocidas. INSERT/UPDATE/DELETE directos devuelven 42501 en los cuatro roles. Una RPC autorizada con payload inválido devuelve 22023; denegación de rol devuelve 42501. Los recorridos funcionales prueban además payloads válidos.
+
+| Tabla | Admin SELECT | Colaborador SELECT | Inactivo SELECT | Anónimo SELECT | INSERT | UPDATE | DELETE | RPC por rol |
+|---|---|---|---|---|---|---|---|---|
+| inventory_receipts | permitido | sin filas/acceso | sin filas/acceso | sin filas/acceso | 42501 todos | 42501 todos | 42501 todos | Admin: register_inventory_receipt permitida; Colaborador: register_inventory_receipt denegada; Inactivo: register_inventory_receipt denegada; Anónimo: register_inventory_receipt denegada |
+| inventory_receipt_items | permitido | sin filas/acceso | sin filas/acceso | sin filas/acceso | 42501 todos | 42501 todos | 42501 todos | Admin: register_inventory_receipt permitida; Colaborador: register_inventory_receipt denegada; Inactivo: register_inventory_receipt denegada; Anónimo: register_inventory_receipt denegada |
+| inventory_receipt_expenses | permitido | sin filas/acceso | sin filas/acceso | sin filas/acceso | 42501 todos | 42501 todos | 42501 todos | Admin: link_inventory_expense permitida; Colaborador: link_inventory_expense denegada; Inactivo: link_inventory_expense denegada; Anónimo: link_inventory_expense denegada |
+| inventory_movements | permitido | permitido | sin filas/acceso | sin filas/acceso | 42501 todos | 42501 todos | 42501 todos | Admin: consumption permitida; Colaborador: consumption permitida; Inactivo: consumption denegada; Anónimo: consumption denegada |
+| inventory_movement_costs | permitido | sin filas/acceso | sin filas/acceso | sin filas/acceso | 42501 todos | 42501 todos | 42501 todos | Admin: consumption permitida; Colaborador: consumption permitida; Inactivo: consumption denegada; Anónimo: consumption denegada |
+| inventory_balances | permitido | permitido | sin filas/acceso | sin filas/acceso | 42501 todos | 42501 todos | 42501 todos | Admin: consumption permitida; Colaborador: consumption permitida; Inactivo: consumption denegada; Anónimo: consumption denegada |
+| inventory_valuations | permitido | sin filas/acceso | sin filas/acceso | sin filas/acceso | 42501 todos | 42501 todos | 42501 todos | Admin: consumption permitida; Colaborador: consumption permitida; Inactivo: consumption denegada; Anónimo: consumption denegada |
+| inventory_movement_attribution_corrections | permitido | permitido | sin filas/acceso | sin filas/acceso | 42501 todos | 42501 todos | 42501 todos | Admin: attribution_correction permitida; Colaborador: attribution_correction denegada; Inactivo: attribution_correction denegada; Anónimo: attribution_correction denegada |
+| inventory_adjustment_cost_evidence | permitido | sin filas/acceso | sin filas/acceso | sin filas/acceso | 42501 todos | 42501 todos | 42501 todos | Admin: adjustment_positive permitida; Colaborador: adjustment_positive denegada; Inactivo: adjustment_positive denegada; Anónimo: adjustment_positive denegada |
+
+Resultado funcional final: **20 COMPLETO, 0 PARCIAL, 0 PENDIENTE funcional, 0 NO APLICA**. A51 sigue separado como requisito pendiente de producción. No se crearon migraciones ni se modificó código de aplicación durante la auditoría.
+
+
+### Conteos finales de auditoría y cierre técnico
+
+| Evidencia | Resultado |
+|---|---|
+| Criterios funcionales solicitados | 20 COMPLETO; 0 PARCIAL; 0 PENDIENTE funcional |
+| API base 4B reejecutada | 71 comprobaciones DEV JWT |
+| Auditoría ampliada 4B | 341 comprobaciones adicionales DEV JWT, matriz 36 combinaciones incluida |
+| UI ampliada | 116 comprobaciones: 114 contra DEV y 2 de red inducida |
+| Regresión real 4A/3E | 57 + 13 + 223 + 117 = 410 comprobaciones |
+| Total contra DEV con JWT/UI | 936 comprobaciones; no suma repeticiones ni duplica los escenarios base compartidos |
+| SQL controlado en DEV | 7 fallos inducidos + 8 contratos CHECK en clones + 8 casos de tasa/evidencia, separados del total JWT |
+| Local | 28/28 pruebas npm correctas |
+| E2E simulado | 26/26 correctos |
+| Lint / typecheck / build | Correctos, lint final sin advertencias |
+| npm audit --omit=dev | 0 vulnerabilidades |
+| Diario global reconstruido | 759 movimientos; cero diferencias de Q/V/A/secuencia/retornables; cero costos faltantes |
+| Esquema | 22 migraciones equivalentes; dry-run vacío; huellas de constraints/columnas/funciones/grants/RLS/policies iguales |
+| Historia 4A | Ambos hashes previos permanecen idénticos |
+| Security Advisors | Solo A51 WARN y order_counters INFO aceptado; ningún hallazgo nuevo |
+| Performance Advisors | 38 INFO unused_index; cero WARN/ERROR; ningún índice eliminado |
+| Restitución de pruebas | Cero triggers inducidos, cero tasas/fixtures transaccionales residuales; perfiles restaurados activos |
+
+La auditoría no requirió correcciones de funcionalidad ni nuevas decisiones. Se corrigió únicamente la sincronización de una prueba UI y se ampliaron sus verificaciones; los mensajes de éxito no se usan como sustituto de comprobar persistencia en BD. Las huellas e invariantes se comprobaron después de todas las escrituras de prueba.
+
+Archivos de auditoría: `tests/phase4b-audit-real.mjs`, `tests/phase4b-audit-ui-real.mjs`, `tests/phase4b-audit.test.mjs`, `tests/sql/phase4b-audit-constraints.sql`, `tests/sql/phase4b-audit-failures.sql`, `tests/sql/phase4b-audit-rates.sql`, este documento y README. Reutilizan los helpers existentes. Ejecutar pruebas reales secuencialmente con `SIGCA_REAL_TESTS=1`, cuentas DEV autorizadas y `SIGCA_UI_URL=http://localhost:3002`. La UI ampliada utiliza las referencias de `phase4b-real.mjs`, que debe ejecutarse primero.
+
+Git final: **2 archivos modificados y 6 nuevos**, solo documentación y pruebas de auditoría. `git diff --check`, revisión de espacios en archivos nuevos y escaneo de secretos correctos; `.env.local` ignorado, assets cliente sin secretos y ningún artefacto de prueba versionable. El checkpoint de implementación es `0702eca`; los cambios de auditoría quedan para revisión, sin segundo commit, push ni tag no solicitados. No avance a 4C/4D/4E. A51 continúa obligatorio antes de producción y no es un pendiente funcional DEV.
