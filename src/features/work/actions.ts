@@ -6,7 +6,9 @@ import {uuid} from '@/features/catalog/schema';
 import type {WorkRead,WorkOperation} from './types';
 export async function readWork(order:string|null):Promise<{data?:WorkRead;error?:string}>{
  await requireProfile();if(order&&!uuid.test(order))return {error:'Pedido inválido.'};
- try{const {data,error}=await(await createClient()).rpc('work_read',{target_order:order});if(error)return {error:'No se pudo consultar el tiempo. Reintenta al recuperar conexión.'};return {data:data as WorkRead};}catch{return {error:'Sin conexión. El cronómetro conserva su estado en servidor.'};}
+ try{const client=await createClient();const {data,error}=await client.rpc('work_read',{target_order:order});if(error)return {error:'No se pudo consultar el tiempo. Reintenta al recuperar conexión.'};const result=data as WorkRead;
+ if(!order&&result.sessions[0]){const r=await client.from('quotes_read').select('order_number').eq('id',result.sessions[0].order_id).single();if(r.error)return {error:'No se pudo identificar el pedido activo.'};result.active_order_number=r.data.order_number;}
+ return {data:result};}catch{return {error:'Sin conexión. El cronómetro conserva su estado en servidor.'};}
 }
 export async function workLines(order:string){
  await requireProfile();if(!uuid.test(order))return {error:'Pedido inválido.'};
