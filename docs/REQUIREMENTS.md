@@ -748,3 +748,23 @@ Correcciones: Admin activo, sesión finished, motivo, revisión, before/after co
 Unicidad global running/paused por trabajador, varios trabajadores por pedido, máximo una pausa abierta. Inicio/reanudación solo in_production. Admin pausa/finaliza ajenas con motivo; trabajador inactivo no opera y requiere cierre Admin explícito. Sesiones abiertas bloquean salida de producción a ready, cancelación y retroceso a confirmed. Sin autocierre. Al finalizar paused, cerrar pausa y sesión con el mismo instante servidor. Reconectar/volver/cambiar dispositivo resincroniza; no aceptar tiempo del navegador.
 
 Colaborador consulta historial operativo de todos los trabajadores del pedido, sin tarifa/costo/evidencia financiera. Estados UI loading, vacío, error, conflicto, sin tarifa y desconexión; controles e indicador global accesibles en 320/375/768/1024/1440. No costeo/rentabilidad ni Fase 4D/4E.
+
+
+## D-22 — Precisiones aprobadas de envíos y autorización 4D/4E (2026-10-14)
+
+Fase 4C aprobada y cerrada en fb44ed7, tag v0.10-phase4c. Autorizadas implementación y auditoría final 4D, seguidas por auditoría integral 4E cuando no existan pendientes funcionales; no Fase 5.
+
+Un shipment admite como máximo un expense_id vigente: gasto válido en CRC del mismo pedido, exclusivo frente a otros shipments y compras/recepciones. Vínculo, desvínculo y sustitución solo Admin activo con motivo, revisión y auditoría. No crear/modificar gastos automáticamente. La anulación posterior conserva el vínculo histórico y muestra «gasto anulado»; reemplazo explícito Admin no modifica costo operativo histórico ni otros datos del envío. Expenses sigue siendo la fuente financiera oficial; no sumar nuevamente el snapshot operativo.
+
+Retrocesos Admin con motivo, un paso: shipping/personal_delivery delivered → shipped → preparing → pending; pickup delivered → preparing → pending. Limpiar delivered_at al salir de delivered y shipped_at al salir de shipped; valores previos permanecen auditados, reavance usa nuevos instantes efectivos. Cancelación Admin desde pending/preparing/shipped, nunca directamente desde delivered; cancelled terminal sin segundo envío. Cancelar conserva shipped_at si existía, no borra hechos reales.
+
+Se mantienen D-22: dirección snapshot editable pending/preparing y congelada tras despacho, shipping exige transportista, guía opcional, cronología efectiva no futura >= confirmed_at, shipped solo pedido ready y delivered solo ready/delivered. No operaciones ordinarias sobre pedido cancelled. Cambios de envío nunca alteran pedido/pagos/inventario/horas; entrega de pedido únicamente acción independiente 3B. Costos CRC exclusivos Admin; customer_direct no crea gasto/payment ni cambia total.
+
+Implementación técnica prevista: shipments operativo, shipment_finances privado por RLS Admin y shipment_requests para idempotencia. RPC transaccional y auditoría before/after; perfil → solicitud → pedido → shipment → gasto/advisory de asociación. Trigger aditivo en inventory_receipt_expenses coordina exclusión con shipment sin sustituir funciones aplicadas. No buckets nuevos ni comprobantes inferidos. No DROP/TRUNCATE/reset ni modificaciones de migraciones previas.
+
+
+## Cierre integral de Fase 4 — 2026-10-15
+
+Autorización acelerada completada: 4C cerrada en `fb44ed7` / `v0.10-phase4c`; 4D implementada y auditada; 4E verifica integración sin añadir reglas funcionales. Matrices: [PHASE4D_VERIFICATION.md](PHASE4D_VERIFICATION.md) (20 criterios completos) y [PHASE4E_VERIFICATION.md](PHASE4E_VERIFICATION.md) (14 completos), ambas sin parciales ni pendientes funcionales DEV. 27 migraciones locales/DEV equivalentes y dry-run vacío. Los costos permanecen privados; envío y entrega de pedido son operaciones separadas, sin generación automática de gastos ni duplicación financiera.
+
+A51 sigue pendiente obligatorio antes de producción; `order_counters` conserva aislamiento intencional; 48 INFO Performance finales y cinco avisos altos de tooling se documentan sin eliminar índices ni degradar dependencias. La tarifa empresarial puede permanecer NULL. No se implementa Fase 5.

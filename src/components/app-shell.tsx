@@ -84,23 +84,7 @@ export function AppShell({
         Inicio
       </Link>
       <Link href="/tiempo" onClick={() => setOpen(false)}><Timer size={20}/>Tiempo</Link>
-      {[
-
-        [Truck, "Envíos"],
-      ].map(([Icon, label]) => {
-        const ItemIcon = Icon as typeof House;
-        return (
-          <span
-            className="nav-disabled"
-            aria-disabled="true"
-            key={String(label)}
-          >
-            <ItemIcon size={20} />
-            {String(label)}
-            <small>Próximamente</small>
-          </span>
-        );
-      })}
+      <Link href="/envios" onClick={() => setOpen(false)}><Truck size={20}/>Envíos</Link>
 
       {[
         [ClipboardList, "Pedidos", "/pedidos"],

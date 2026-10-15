@@ -392,3 +392,14 @@ Para repetir ampliación: `node tests/phase4b-audit-real.mjs` y `node tests/phas
 D-24 documentada; cronómetro persistente, una sesión abierta por trabajador, pausas, tarifa histórica separada, intervenciones/correcciones/históricos Admin y bloqueo de transiciones con sesiones abiertas. Acceso en `/tiempo`, desde pedido/línea y menú Más. DEV conserva tarifa sin configurar (`NULL`): Administración debe indicar el valor real en Configuración para habilitar Play.
 
 Tres migraciones aditivas 4C aplicadas exclusivamente a SIGCA DEV; 25 locales/remotas, dry-run sin pendientes. Evidencia, matriz, permisos, concurrencia, reconstrucción, pruebas reales/simuladas e inducidas en [PHASE4C_VERIFICATION.md](docs/PHASE4C_VERIFICATION.md). No nuevas dependencias ni secretos/variables. A51 pendiente antes de producción, `order_counters` intencional y 44 INFO Performance conservados. Sin 4D/4E ni tag final.
+
+
+## Estado vigente — Fase 4 cerrada para desarrollo (2026-10-15)
+
+Esta sección actualiza los estados de revisión históricos anteriores. 4C cerrada con `fb44ed7` y tag `v0.10-phase4c`. 4D incorpora Envíos y entregas desde el menú y desde cada pedido confirmado: retiro, mensajería y entrega personal, estados independientes del pedido, dirección snapshot, correcciones administrativas auditadas y vínculo explícito con gasto. Los costos están separados y solo llegan a Admin. No se crean gastos ni pagos automáticamente.
+
+Auditorías completas: [4D](docs/PHASE4D_VERIFICATION.md), 20 criterios; [4E](docs/PHASE4E_VERIFICATION.md), 14 criterios. Ambas con cero parciales/pendientes funcionales DEV. Las 27 migraciones coinciden con SIGCA DEV y dry-run está vacío. Sin dependencias, variables de entorno ni buckets nuevos.
+
+Validación de cierre: 30 tests locales, 26 E2E simulados, 529 comprobaciones reales JWT/UI, seis comprobaciones de red inducida y seis puntos de rollback inducido. Reconstrucción independiente de 962 movimientos y 130 sesiones sin diferencias. Responsive 320/375/768/1024/1440 para ambos roles. Lint/typecheck/build correctos; audit de producción cero; secretos y artefactos excluidos. Reproducción y límites de cada evidencia en las matrices.
+
+La tarifa real permanece NULL: Admin debe configurar el valor empresarial para iniciar cronómetros; los valores de prueba no son una decisión de negocio. A51 pendiente obligatorio antes de producción; order_counters intencional; 48 INFO Performance y cinco avisos altos de dependencias de desarrollo documentados. Tag de cierre autorizado: `v0.11-phase4-complete`. No se avanzó a Fase 5.

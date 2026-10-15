@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {readFile,writeFile} from 'node:fs/promises';
+import {expect as baseExpect} from '@playwright/test';
+import {devHarness} from './support/real-session.mjs';
+const expect=baseExpect.configure({timeout:30000}),h=await devHarness(),evidence=[];
+const check=(v,label)=>{assert.ok(v,label);evidence.push(label);console.log('PASS '+label);};
+try{
+ const admin=await h.login(process.env.SIGCA_TEST_ADMIN_EMAIL),member=await h.login(process.env.SIGCA_TEST_MEMBER_EMAIL),data=JSON.parse(await readFile('test-results/phase4d-real.json','utf8'));
+ const selected=await admin.client.from('shipments').select('*').in('id',data.ids.shipments).eq('status','pending').limit(1).single();assert.equal(selected.error,null);const id=selected.data.id;
+ const read=async()=>{const r=await admin.client.from('shipments').select('*').eq('id',id).single();assert.equal(r.error,null);return r.data;};
+ for(const [role,u] of [['admin',admin],['member',member]]){
+  const p=u.page;await p.setViewportSize({width:320,height:900});await p.goto(`${process.env.SIGCA_UI_URL??'http://localhost:3005'}/envios?order=${selected.data.order_id}`);await p.waitForLoadState('networkidle');
+  const prior=await read();assert.equal((await admin.client.rpc('shipment_operate',{request_id:randomUUID(),operation:'edit',target:id,expected_revision:prior.revision,payload:{notes:'Edición concurrente '+role}})).error,null);
+  await p.locator('textarea[name=notes]').first().fill('Revisión vieja');await p.getByRole('button',{name:'Guardar datos',exact:true}).click();await expect(p.locator('p[role=alert]')).toContainText('cambió');check((await read()).notes==='Edición concurrente '+role,role+' conflicto UI conserva edición concurrente');await p.getByRole('button',{name:'Recargar estado',exact:true}).click();await p.waitForLoadState('networkidle');await expect(p.locator('p[role=alert]')).toHaveCount(0);await expect(p.locator('textarea[name=notes]').first()).toHaveValue('Edición concurrente '+role);
+  const revision=(await read()).revision;await p.route('**/envios**',r=>r.request().method()==='POST'?r.abort():r.continue());await p.locator('textarea[name=notes]').first().fill('Red interrumpida '+role);await p.getByRole('button',{name:'Guardar datos',exact:true}).click();await expect(p.locator('p[role=alert]')).toContainText('no confirmada');check((await read()).revision===revision,role+' red inducida antes de COMMIT sin cambios');await p.unroute('**/envios**');await p.getByRole('button',{name:'Guardar datos',exact:true}).click();await expect.poll(async()=>(await read()).notes).toBe('Red interrumpida '+role);
+  await p.goto(`${process.env.SIGCA_UI_URL??'http://localhost:3005'}/envios?order=${selected.data.order_id}`);await p.waitForLoadState('networkidle');const beforeLost=(await read()).revision;let intercepted=false;
+  await p.route('**/envios**',async r=>{if(!intercepted&&r.request().method()==='POST'&&r.request().postData()?.includes('edit')){intercepted=true;await r.fetch();await r.abort();}else await r.continue();});await p.locator('textarea[name=notes]').first().fill('Respuesta perdida '+role);await p.getByRole('button',{name:'Guardar datos',exact:true}).click();await expect(p.locator('p[role=alert]')).toContainText('no confirmada');check(intercepted&&(await read()).revision===beforeLost+1,role+' pérdida inducida después de COMMIT');await p.unroute('**/envios**');await p.getByRole('button',{name:'Guardar datos',exact:true}).click();await expect(p.locator('p[role=alert]')).toHaveCount(0);check((await read()).revision===beforeLost+1,role+' reintento idempotente desde UI');
+  if(role==='admin'){await p.goto((process.env.SIGCA_UI_URL??'http://localhost:3005')+'/envios?order='+selected.data.order_id);await p.waitForLoadState('networkidle');const details=p.locator('details').filter({has:p.getByText('Corregir datos históricos',{exact:true})});await details.locator('summary').click();await details.locator('textarea[name=notes]').fill('Corrección administrativa UI');await details.locator('textarea[name=reason]').fill('Validación explícita 4D');await details.getByRole('button',{name:'Guardar corrección'}).click();await p.locator('.swal2-confirm').click();await expect.poll(async()=>(await read()).notes).toBe('Corrección administrativa UI');check(true,'Corrección Admin UI');}
+ }
+ await writeFile('test-results/phase4d-network.json',JSON.stringify({environment:'DEV real con fallos de red inducidos identificados',evidence},null,2));
+}finally{await h.close();}
