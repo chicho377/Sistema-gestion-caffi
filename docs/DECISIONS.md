@@ -1076,3 +1076,260 @@ Implementación técnica prevista: shipments operativo, shipment_finances privad
 Autorización acelerada completada: 4C cerrada en `fb44ed7` / `v0.10-phase4c`; 4D implementada y auditada; 4E verifica integración sin añadir reglas funcionales. Matrices: [PHASE4D_VERIFICATION.md](PHASE4D_VERIFICATION.md) (20 criterios completos) y [PHASE4E_VERIFICATION.md](PHASE4E_VERIFICATION.md) (14 completos), ambas sin parciales ni pendientes funcionales DEV. 27 migraciones locales/DEV equivalentes y dry-run vacío. Los costos permanecen privados; envío y entrega de pedido son operaciones separadas, sin generación automática de gastos ni duplicación financiera.
 
 A51 sigue pendiente obligatorio antes de producción; `order_counters` conserva aislamiento intencional; 48 INFO Performance finales y cinco avisos altos de tooling se documentan sin eliminar índices ni degradar dependencias. La tarifa empresarial puede permanecer NULL. No se implementa Fase 5.
+
+
+## D-25 — Costeo y rentabilidad de Fase 5
+
+Autorización aprobada posterior a v0.11-phase4-complete. Resuelve los pendientes de imputación de D-04; conserva las fuentes históricas D-03/D-23/D-24. Texto aprobado:
+
+MODO ACELERADO — FASE 5 COMPLETA: COSTEO Y RENTABILIDAD
+Fase 4 está cerrada en v0.11-phase4-complete.
+Implementa, valida, audita y, si queda limpia, cierra Fase 5 en una sola ejecución.
+No hagas preflight separado.
+Detente únicamente ante una decisión funcional realmente nueva no cubierta por estas reglas, una operación destructiva no autorizada o una contradicción.
+No avances a Fase 6.
+FUENTES OFICIALES DEL COSTO DE UN PEDIDO
+Para rentabilidad de pedidos utilizar exclusivamente:
+Materiales
+- consumos reales de inventario;
+- utilizando el valor interno histórico efectivamente asignado al consumo;
+- devoluciones/correcciones disminuyen el costo conforme a sus movimientos;
+- no utilizar material_costs actuales para recalcular historia;
+- no sumar compras/recepciones como costo adicional.
+Mano de obra
+- sesiones de trabajo válidas;
+- tarifa histórica congelada;
+- worked_seconds;
+- costo matemático:
+hourly_rate_applied × worked_seconds / 3600
+mantener cálculo decimal y aplicar HALF UP a 2 únicamente en el importe monetario final correspondiente.
+Gastos
+- únicamente expenses válidos vinculados al pedido/línea;
+- anulados excluidos;
+- no sumar gastos de compra de inventario cuando representen adquisiciones cuya valoración ya llega mediante consumo;
+- gasto de envío se cuenta una sola vez mediante expenses;
+- nunca sumar además shipment.shipping_cost cuando corresponde al mismo gasto.
+payments NO son ingreso contable de rentabilidad.
+manual_income NO forma parte de rentabilidad de pedido.
+Son fuentes de movimientos financieros/caja, no de venta del pedido.
+INGRESO DEL PEDIDO
+La fuente de ingreso comercial es el total final del pedido conforme a Fase 3:
+líneas
+→ descuentos de línea
+→ descuento general
+→ total final.
+No usar dinero cobrado como sustituto del ingreso comercial.
+Un pedido puede estar entregado y todavía tener saldo pendiente; eso no cambia su ingreso comercial.
+ESTADOS DE RENTABILIDAD
+quote:
+no declarar rentabilidad realizada.
+confirmed / in_production / ready:
+mostrar rentabilidad provisional usando ingreso comercial vigente y costos reales registrados hasta ese momento.
+Debe indicarse claramente que todavía pueden existir costos futuros.
+delivered:
+rentabilidad realizada.
+cancelled:
+no incluir como venta activa ni venta realizada.
+Sus costos históricos siguen existiendo y permanecen consultables por Admin, pero no inventar una venta.
+CORRECCIONES POSTERIORES A ENTREGA
+No congelar artificialmente un snapshot definitivo de utilidad al momento de entregar.
+Un pedido Delivered continúa siendo “realizado”, pero su rentabilidad se deriva de las fuentes históricas válidas actuales.
+Por tanto, una corrección administrativa legítima posterior de:
+- consumo;
+- devolución;
+- sesión;
+- gasto;
+- reclasificación;
+puede actualizar la rentabilidad realizada.
+Conservar auditoría de las fuentes.
+No implementar cierre contable de períodos en V1.
+RENTABILIDAD DEL PEDIDO
+Calcular:
+material_cost
+labor_cost
+expense_cost
+total_cost = material_cost + labor_cost + expense_cost
+profit = revenue - total_cost
+Si:
+revenue > 0
+entonces:
+margin_percent = profit / revenue × 100
+Si:
+revenue = 0
+margin_percent = NULL
+No presentar infinito ni 0% artificial.
+Un pedido autorizado con total cero puede tener utilidad negativa.
+RENTABILIDAD POR LÍNEA
+Se aprueba rentabilidad por order_item.
+Ingreso por línea
+Primero utilizar el neto de cada línea después de su descuento propio.
+El descuento general del pedido se distribuye proporcionalmente al neto de las líneas.
+Debe preservarse exactamente el total final del pedido.
+Si el redondeo a 2 decimales produce residuo, asignarlo de forma determinística a una línea usando orden estable.
+Documenta el método exacto.
+No debe perderse ni crearse un centavo.
+Costos directos
+Si material, sesión o gasto tiene order_item_id, asignarlo directamente a esa línea.
+Costos del pedido sin línea
+Se consideran costos compartidos.
+Si el ingreso total distribuible del pedido es > 0:
+distribuirlos proporcionalmente al ingreso asignado de cada línea.
+Si el ingreso total es 0:
+NO inventar reparto.
+Mantenerlos como:
+unallocated_order_cost
+El total de rentabilidad del pedido sigue siendo correcto, pero la rentabilidad individual de líneas debe indicar que existen costos compartidos no asignables.
+No repartir por cantidad porque unidades de productos distintos no son comparables.
+CORRECCIÓN DE ATRIBUCIÓN
+Para consumos utilizar la atribución vigente corregida de 4B.
+Para sesiones utilizar la atribución vigente después de correcciones 4C.
+Para gastos utilizar su order_id/order_item_id vigente permitido.
+Conservar historia original en auditoría, pero los cálculos actuales usan la atribución corregida vigente.
+PREVENCIÓN DE DOBLE COSTO
+Implementa verificaciones explícitas para impedir:
+- compra de material + consumo del mismo material como dos costos;
+- receta estimada + consumo real;
+- shipment.shipping_cost + expense vinculado;
+- sesión corregida + versión anterior;
+- movimiento revertido + original como dos costos;
+- gasto anulado;
+- devolución contada además como costo positivo.
+Una recepción de inventario vinculada a un gasto conserva trazabilidad financiera pero ese gasto de adquisición no debe volver a sumarse al costo del pedido si el costo del material ya se reconoce mediante consumo.
+PRECISIÓN
+No utilizar float.
+Mantener precisión histórica interna ya aprobada.
+No reconstruir costos de inventario usando valores visuales de 2 decimales.
+Agregar componentes con decimal suficiente y redondear HALF UP en los límites monetarios de presentación/salida.
+El total general debe reconciliar exactamente con sus componentes presentados.
+Documenta tratamiento de residuos si fuese necesario.
+SEGURIDAD
+Rentabilidad/costos: Admin únicamente.
+Colaborador NO puede recibir:
+- costo materiales;
+- costo mano de obra;
+- tarifas;
+- gastos agregados;
+- costo total;
+- utilidad;
+- margen;
+- asignaciones compartidas.
+Puede conservar únicamente su información operacional ya aprobada.
+Verifica ausencia de filtraciones en:
+- RLS;
+- vistas;
+- RPC;
+- Server Components;
+- HTML;
+- JSON;
+- errores.
+No hacer SELECT * financiero para luego ocultarlo en frontend.
+UI ADMIN
+Incorporar una vista de Costeo / Rentabilidad clara y ejecutiva.
+Debe mostrar por pedido:
+- número;
+- cliente;
+- estado;
+- ingreso;
+- materiales;
+- mano de obra;
+- otros gastos;
+- costo total;
+- utilidad;
+- margen;
+- provisional/realizada.
+Detalle:
+- desglose de materiales;
+- horas/costo laboral;
+- gastos;
+- envío cuando corresponda;
+- rentabilidad por línea;
+- costos compartidos/no asignados;
+- advertencias de información incompleta.
+No implementar todavía dashboard global de Fase 6.
+DATOS INCOMPLETOS
+No inventar costo cero cuando falta información requerida.
+Si existe una situación que impide determinar rentabilidad confiablemente, mostrar estado como:
+Datos de costo incompletos
+e identificar qué fuente falta.
+Ejemplo: sesión histórica sin tarifa válida no debería existir por reglas anteriores; si se detecta inconsistencia, no ocultarla.
+ARQUITECTURA
+Preferir vistas/RPC de lectura derivadas sobre almacenar utilidad mutable.
+No crear una columna profit que pueda quedar obsoleta si las fuentes cambian.
+Si se necesita materialización por rendimiento, no hacerlo sin evidencia de necesidad.
+Las fuentes históricas siguen siendo autoritativas.
+PRUEBAS
+Probar contra DEV real como mínimo:
+- pedido solo con materiales;
+- solo mano de obra;
+- solo gastos;
+- todos combinados;
+- devolución de material;
+- corrección de consumo;
+- corrección de atribución;
+- corrección de sesión;
+- gasto anulado;
+- envío con expense;
+- compra de inventario vinculada a expense sin doble costo;
+- pedido con descuento de línea;
+- descuento general;
+- múltiples líneas;
+- costo compartido;
+- pedido total cero;
+- margen negativo;
+- delivered;
+- active/provisional;
+- cancelled;
+- corrección posterior a entrega;
+- Colaborador sin acceso financiero.
+Reconciliar:
+material + labor + expenses = total_cost
+revenue - total_cost = profit
+y distribución de líneas + no asignado debe reconciliar exactamente con pedido.
+REGRESIÓN
+Reejecutar suficiente regresión de:
+- Fase 3;
+- 4A;
+- 4B;
+- 4C;
+- 4D;
+- RLS;
+- Storage;
+- estados del pedido;
+- inventario;
+- horas;
+- envíos.
+Fase 5 es lectura/cálculo y no debe alterar las fuentes.
+CALIDAD Y AUDITORÍA EN LA MISMA EJECUCIÓN
+Ejecuta:
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+npm audit --omit=dev
+Security Advisors.
+Performance Advisors.
+Responsive:
+320 / 375 / 768 / 1024 / 1440
+Admin y validaciones de acceso Colaborador.
+Crear:
+docs/PHASE5_VERIFICATION.md
+con matriz final.
+No me entregues primero una implementación provisional y luego pidas otra auditoría.
+Implementa y audita Fase 5 en una sola corrida.
+Si termina con:
+- 0 PARCIAL funcional;
+- 0 PENDIENTE funcional;
+- regresión correcta;
+- sin vulnerabilidades de producción introducidas;
+crea:
+git commit -m "feat: implement and validate phase 5 costing and profitability"
+y tag:
+v0.12-phase5-complete
+Si el tag existe, no sobrescribir.
+No avances a Fase 6.
+Detente únicamente ante una nueva decisión funcional genuina, cambio destructivo o contradicción.
+
+### RF-COS-08 — Snapshot histórico por línea aprobado
+
+Al confirmar, capturar products.estimated_minutes vigente en order_items.estimated_minutes_snapshot para líneas de catálogo; NULL conserva ausencia de estimación y líneas personalizadas quedan NULL. Estimación por unidad; total estimado = snapshot × cantidad vigente. El catálogo posterior nunca cambia el snapshot. Pedidos ya confirmados no reciben backfill y muestran «Estimación histórica no disponible». Una línea nueva añadida legítimamente a un pedido confirmado captura su snapshot en ese momento y queda auditada. Cotizaciones pueden mostrar referencia actual como vista previa, nunca como histórico.

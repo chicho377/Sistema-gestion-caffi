@@ -48,6 +48,7 @@ export default async function More() {
         {profile.role === "admin" && (
           <Link className="button secondary" href="/ingresos-manuales"><Wallet size={20}/>Ingresos manuales</Link>
         )}
+        {profile.role === "admin" && <Link className="button secondary" href="/costeo"><Wallet size={20}/>Costeo y rentabilidad</Link>}
         <Link className="button secondary" href="/gastos"><Receipt size={20}/>{profile.role === "admin" ? "Gastos" : "Mis gastos"}</Link>
         {profile.role === "admin" && (
           <Link className="button secondary" href="/configuracion">

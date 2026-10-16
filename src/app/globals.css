@@ -1170,3 +1170,8 @@ details[open] > summary {
 .work-pause { display:grid; gap:8px; min-width:0; }
 .work-edit input, .work-edit select { min-width:0; max-width:100%; }
 @media(min-width:768px){ .work-pause { grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; align-items:end; } }
+
+/* Fase 5: scroll local para las tablas financieras completas de escritorio. */
+.costing-table-wrap { max-width: 100%; overflow-x: auto; }
+.costing-table-wrap th, .costing-table-wrap td { overflow-wrap: anywhere; }
+@media (min-width: 1024px) { .costing-table-wrap .catalog-table { min-width: 1100px; } }

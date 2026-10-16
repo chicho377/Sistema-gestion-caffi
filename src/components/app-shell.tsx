@@ -119,6 +119,7 @@ export function AppShell({
       {role === "admin" && (
         <>
           <span className="nav-caption">ADMINISTRACIÓN</span>
+          <Link href="/costeo" onClick={() => setOpen(false)}><Wallet size={20}/>Costeo y rentabilidad</Link>
           <Link href="/ingresos-manuales" className={path.startsWith("/ingresos-manuales") ? "active" : ""} onClick={() => setOpen(false)}><Wallet size={20}/>Ingresos manuales</Link>
           <Link
             href="/configuracion"
