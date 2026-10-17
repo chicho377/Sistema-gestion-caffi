@@ -1,103 +1,17 @@
-import Link from "next/link";
-import {
-  Flower2,
-  ClipboardList,
-  UsersRound,
-  Package,
-  ArrowUpRight,
-  ShieldCheck,
-} from "lucide-react";
-import { requireProfile } from "@/lib/auth";
-export default async function Dashboard({
-  searchParams,
-}: {
-  searchParams: Promise<{ notice?: string }>;
-}) {
-  const profile = await requireProfile();
-  const { notice } = await searchParams;
-  return (
-    <>
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">TU ESPACIO CREATIVO</span>
-          <h1>Bienvenida a tu taller</h1>
-          <p className="muted">
-            Todo empieza con una idea y una primera puntada.
-          </p>
-        </div>
-        <span className="status-pill">
-          <ShieldCheck size={16} />
-          Acceso seguro
-        </span>
-      </div>
-      {notice === "forbidden" && (
-        <p role="alert" className="message error">
-          Tu rol no permite acceder a esa sección.
-        </p>
-      )}
-      <section className="welcome-panel">
-        <div>
-          <span className="eyebrow">UN LUGAR PARA TUS CREACIONES</span>
-          <h2>
-            Más espacio para
-            <br />
-            lo que te gusta hacer.
-          </h2>
-          <p>
-            Tu cuenta está lista. Aquí podrás acompañar cada creación, desde la
-            primera idea hasta su entrega.
-          </p>
-          <span className="handwritten">Vamos, puntada a puntada.</span>
-        </div>
-        <div className="welcome-flower" aria-hidden>
-          <Flower2 strokeWidth={1} />
-        </div>
-      </section>
-      <div className="section-heading">
-        <h2>Así crecerá tu espacio</h2>
-        <span className="small muted">Próximamente</span>
-      </div>
-      <div className="module-grid">
-        {[
-          {
-            icon: ClipboardList,
-            title: "Tus pedidos",
-            text: "Cada encargo, sus detalles y su historia.",
-          },
-          {
-            icon: UsersRound,
-            title: "Tus clientes",
-            text: "Las personas que eligen lo que creas.",
-          },
-          {
-            icon: Package,
-            title: "Tus productos",
-            text: "Un lugar para organizar tus creaciones.",
-          },
-        ].map(({ icon: Icon, title, text }) => (
-          <article className="module-card" key={title}>
-            <span className="module-icon">
-              <Icon size={24} />
-            </span>
-            <h3>{title}</h3>
-            <p>{text}</p>
-            <span className="small muted">Aún no disponible</span>
-          </article>
-        ))}
-      </div>
-      <section className="account-panel">
-        <ShieldCheck size={26} />
-        <div>
-          <h3>Tu espacio es privado</h3>
-          <p>Solo las personas autorizadas pueden acceder.</p>
-        </div>
-        {profile.role === "admin" && (
-          <Link className="button secondary" href="/usuarios">
-            Administrar usuarios
-            <ArrowUpRight size={18} />
-          </Link>
-        )}
-      </section>
-    </>
-  );
+import Link from 'next/link';
+import {requireProfile} from '@/lib/auth';
+import {createClient} from '@/lib/supabase/server';
+import {Filters,Values,ProfitSummary,ReportRows,Series} from '@/components/reporting';
+import {period,type Params,type Report,type Row} from '@/features/reports/model';
+export default async function Dashboard({searchParams}:{searchParams:Promise<Params>}){
+ const actor=await requireProfile(),p=await searchParams,admin=actor.role==='admin';let range;try{range=period(p);}catch{return <><h1>Dashboard</h1><p role="alert">Rango inválido.</p><Filters params={p} admin={admin} dashboard/></>;}
+ const client=await createClient(),{data,error}=await client.rpc('dashboard_query',{first_day:range.from,last_day:range.to});if(error)throw Error('No se pudo consultar el Dashboard.');
+ const charts=admin?await client.rpc('report_charts',{first_day:range.from,last_day:range.to}):null;if(charts?.error)throw Error('No se pudieron consultar los gráficos.');
+ const series=(charts?.data??{monthly:[],categories:[],products:[]}) as {monthly:Row[];categories:Row[];products:Row[]};
+ const d=data as {generated_at:string;current_orders:Report;low_stock:Report;hours:Row;shipments:Report;shipment_current_states:Row;alerts:Row;sales?:Row;active_sales?:Row;cash?:Row;profit?:Row;provisional_profit?:Row;ticket_promedio_crc?:string;saldo_actual_crc?:string};
+ return <><div className="page-heading"><div><span className="eyebrow">TU TALLER EN PERSPECTIVA</span><h1>Dashboard</h1><p>{range.from} — {range.to} · America/Costa_Rica</p></div><Link className="button secondary" href="/reportes">Consultar reportes</Link></div>{p.notice==='forbidden'&&<p className="message error" role="alert">Tu rol no permite acceder a esa sección.</p>}<Filters params={p} admin={admin} dashboard/>
+ {admin&&<><section className="panel"><h2>Ventas del período</h2><Values data={{ventas_realizadas_crc:d.sales?.importe_crc,pedidos_entregados:d.sales?.registros,ticket_promedio_entregados_crc:d.ticket_promedio_crc,ventas_comprometidas_crc:d.active_sales?.importe_crc,pedidos_comprometidos:d.active_sales?.cantidad}}/></section><section className="panel"><h2>Movimiento financiero del período</h2><p>Dinero recibido menos gastos. No representa utilidad.</p><Values data={{payments_crc:d.cash?.payments_crc,manual_income_crc:d.cash?.manual_income_crc,expenses_crc:d.cash?.expenses_crc,movimiento_neto_crc:d.cash?.movimiento_neto_crc}}/></section><Series title="Ingresos recibidos por mes" rows={series.monthly} name="mes" value="ingresos_crc"/><Series title="Gastos por mes" rows={series.monthly} name="mes" value="gastos_crc"/><Series title="Gastos por categoría" rows={series.categories} name="categoria" value="gastos_crc"/><Series title="Ventas realizadas por producto" rows={series.products} name="producto" value="ventas_crc"/><h2>Rentabilidad realizada · Fase 5</h2><ProfitSummary data={d.profit??{}}/><h2>Rentabilidad provisional · Fase 5</h2><ProfitSummary data={d.provisional_profit??{}}/></>}
+ <section className="panel"><h2>Horas del período</h2><Values data={{segundos_periodo:d.hours.segundos_periodo,segundos_provisionales:d.hours.segundos_provisionales}}/><Link href="/reportes?kind=hours">Consultar productividad y estimaciones históricas</Link></section>
+ <section className="panel"><h2>Situación actual</h2><p>Actual / al momento de la consulta. No es la situación histórica del período seleccionado.</p><Values data={{pedidos_activos:d.current_orders.count,...d.alerts,materiales_bajo_minimo:d.low_stock.count,envios_pendientes:d.shipment_current_states,...(admin?{saldo_actual_crc:d.saldo_actual_crc}:{})}}/></section>
+ <h2>Pedidos activos y fechas solicitadas</h2><ReportRows report={d.current_orders}/><Link href="/reportes?kind=operation">Ver todos los pedidos activos</Link><h2>Materiales bajo mínimo</h2><ReportRows report={d.low_stock}/><Link href="/reportes?kind=inventory&state=bajo_minimo">Ver inventario bajo mínimo</Link><h2>Eventos de envío del período</h2><ReportRows report={d.shipments}/></>;
 }

@@ -408,3 +408,13 @@ La tarifa real permanece NULL: Admin debe configurar el valor empresarial para i
 Costeo y rentabilidad disponible para Admin en /costeo y menú Más: costos históricos netos de materiales, horas y gastos válidos, exclusión de compras vinculadas y duplicación de envíos, distribución conciliada por línea, utilidad, margen, ganancia por hora y estimación histórica frente a tiempo real. RF-COS-08 captura la estimación al confirmar o añadir una línea confirmada, sin backfill ni actualización retroactiva desde catálogo. Colaborador no recibe datos financieros del módulo.
 
 Tres migraciones nuevas, 30 equivalentes con DEV y dry-run vacío. Sin dependencias, variables o buckets nuevos. Evidencia y reproducción: [PHASE5_VERIFICATION.md](docs/PHASE5_VERIFICATION.md). A51 obligatorio antes de producción; order_counters intencional; 48 INFO Performance conservados. Tarifa empresarial pendiente como dato de Configuración. No se avanzó a Fase 6. Esta sección actualiza los estados históricos de fases anteriores.
+
+## Estado vigente — Fase 6
+
+Dashboard y reportes derivados de fuentes autoritativas: ventas, cartera, caja, rentabilidad de Fase 5, inventario, horas, envíos y auditoría. Admin accede a finanzas; Colaborador recibe únicamente operación autorizada. Los períodos usan America/Costa_Rica; la situación actual se etiqueta separadamente. Los costos incompletos impiden presentar utilidad global determinada.
+
+R1–R7 y auditoría disponen de Excel/PDF generados en servidor, filtros y paginación. Límite técnico: 5000 registros por exportación; si se supera se requiere acotar filtros, sin exportación parcial. Importes XLSX preservados como texto decimal. Dependencias nuevas: write-excel-file y PDFKit; tipos PDFKit solo desarrollo. Sin variables de entorno nuevas.
+
+Cuatro migraciones nuevas y 34 equivalentes local/DEV; fingerprint de ocho funciones equivalente y dry-run vacío. Validación: 33 pruebas locales, 26 E2E simulados, 57 comprobaciones API reales, 15 de seguridad y 141 UI/HTTP (incluye dos fallos de red inducidos), más 513 comprobaciones de regresión real. Responsive en 320/375/768/1024/1440, ambos roles. Reproducción, SQL independiente y matriz de 25 criterios: [PHASE6_VERIFICATION.md](docs/PHASE6_VERIFICATION.md).
+
+Lint, typecheck, tests y build aprobados; audit de producción sin vulnerabilidades. A51 permanece obligatorio antes de producción; order_counters mantiene aislamiento intencional; 45 INFO de Performance documentados sin retirar índices. settings.hourly_rate permanece NULL como dato empresarial pendiente. No se avanzó a Fase 7.

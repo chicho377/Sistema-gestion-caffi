@@ -1333,3 +1333,15 @@ Detente únicamente ante una nueva decisión funcional genuina, cambio destructi
 ### RF-COS-08 — Snapshot histórico por línea aprobado
 
 Al confirmar, capturar products.estimated_minutes vigente en order_items.estimated_minutes_snapshot para líneas de catálogo; NULL conserva ausencia de estimación y líneas personalizadas quedan NULL. Estimación por unidad; total estimado = snapshot × cantidad vigente. El catálogo posterior nunca cambia el snapshot. Pedidos ya confirmados no reciben backfill y muestran «Estimación histórica no disponible». Una línea nueva añadida legítimamente a un pedido confirmado captura su snapshot en ese momento y queda auditada. Cotizaciones pueden mostrar referencia actual como vista previa, nunca como histórico.
+
+## D-26 — Fase 6: Dashboard, reportes y exportaciones
+
+Autorizada implementación, pruebas y auditoría conjunta; no Fase 7. Dashboard Admin separa ventas realizadas (delivered_at), comprometidas (confirmed_at), caja (payment_date/income_date/expense_date) y rentabilidad exclusivamente Fase 5. Colaborador recibe únicamente operación, sin agregados financieros. R1 ventas/pedidos, R2 pagos/saldos, R3 fuentes financieras, R4 rentabilidad, R5 inventario, R6 productividad, R7 envíos y R8 auditoría Admin de solo lectura. Excel/PDF server-side para R1-R7 con mismos filtros, fecha de generación y zona America/Costa_Rica. Filtros/paginación servidor, ningún KPI mutable ni duplicado de fuentes.
+
+B6-01: intersección real de sesión/rango menos pausas superpuestas; límites Costa Rica. Distribuir sin modificar historia. Segundos de segmentos deben sumar worked_seconds. Implementación por diferencias de FLOOR del tiempo neto acumulado desde inicio a cada límite, evitando truncar cada segmento independientemente. Costo temporal = tarifa histórica × segundos del período / 3600, decimal, HALF UP monetario final. Sesiones abiertas se identifican como provisionales.
+
+B6-02: stock, mínimos, pedidos activos/alertas y envíos pendientes son Situación actual / al momento de consulta, incluso con rango histórico. El rango filtra flujos, ventas, caja, rentabilidad, horas, movimientos y eventos de envío. No reconstruir situación histórica de inventario o cartera.
+
+B6-03: si hay pedidos con costo incompleto en el conjunto, utilidad y margen globales indeterminados. Mostrar bloque Pedidos con información completa (cantidad, ingreso, costo, utilidad, margen) y Excluidos por información incompleta (cantidad, ingreso comercial, causas). Subtotal completo nunca se denomina utilidad global. Cobertura es indicador separado, no margen. Con todos completos se permite resultado global.
+
+Tarifa empresarial continúa NULL, sin valor inventado. Reutilizar RLS/perfiles vigentes y confirmar permisos en servidor/exportaciones. Sin tablas financieras nuevas, cambios destructivos ni alteraciones de snapshots. Cierre condicionado a matriz sin pendientes funcionales, regresión, exportaciones y seguridad verificadas; commit feat: implement and validate phase 6 dashboard and reporting y tag v0.13-phase6-complete, sin sobrescribir.

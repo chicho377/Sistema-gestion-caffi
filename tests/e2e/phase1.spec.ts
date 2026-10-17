@@ -63,7 +63,7 @@ for (const width of widths) {
     await expect(page).toHaveURL(/dashboard/);
     await noOverflow(page);
     await expect(
-      page.getByRole("heading", { name: "Bienvenida a tu taller" }),
+      page.getByRole("heading", { name: "Dashboard" }),
     ).toBeVisible();
     await page.screenshot({
       path: `test-results/dashboard-${width}.png`,

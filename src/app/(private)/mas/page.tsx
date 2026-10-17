@@ -35,6 +35,7 @@ export default async function More() {
           <Package size={20} />
           Productos
         </Link>
+        <Link className="button secondary" href="/reportes">Reportes</Link>
         <Link className="button secondary" href="/inventario">Inventario</Link>
         <Link className="button secondary" href="/tiempo"><Timer size={20}/>Control de horas</Link>
         <Link className="button secondary" href="/materiales">

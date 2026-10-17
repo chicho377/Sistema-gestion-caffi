@@ -1,0 +1,31 @@
+begin;
+do $$declare actor uuid; cid uuid;oid uuid:=gen_random_uuid();lid uuid:=gen_random_uuid();sid uuid:=gen_random_uuid(); running uuid:=gen_random_uuid();a jsonb;b jsonb;c jsonb;dt timestamptz;yr integer:=1980;begin
+ select id into actor from public.profiles where role='admin' and status='active' order by id limit 1;
+ perform set_config('request.jwt.claim.sub',actor::text,true);
+ loop
+ dt:=make_timestamptz(yr,2,1,0,0,0,'America/Costa_Rica');
+ exit when not exists(select 1 from public.work_sessions where user_id=actor and started_at<dt+interval '3 seconds' and coalesce(finished_at,now())>dt-interval '2 seconds');yr:=yr+1;
+ if yr>2000 then raise exception 'No historical test interval available';end if;
+ end loop;
+ insert into public.clients(name) values('VALIDACION-6-TEMPORAL') returning id into cid;
+ perform public.save_quote(oid,0,jsonb_build_object('client_id',cid,'order_date',make_date(yr,1,1),'requested_delivery_date',make_date(yr,2,20),'discount_amount','0','items',jsonb_build_array(jsonb_build_object('id',lid,'product_name_snapshot','Línea temporal','quantity','1','unit_price','10','discount_amount','0','is_active',true))));
+ perform public.confirm_order(oid,1,jsonb_build_object('confirmed_at',make_date(yr,1,1)::timestamp at time zone 'America/Costa_Rica','deposit_percentage','0'));
+ perform public.work_operate(gen_random_uuid(),'historical',sid,null,jsonb_build_object('order_id',oid,'order_item_id',lid,'user_id',actor,'started_at',dt-interval '0.4 seconds','finished_at',dt+interval '2.2 seconds','hourly_rate','10.00','reason','Prueba segmentación','pauses',jsonb_build_array(jsonb_build_object('paused_at',dt-interval '0.1 seconds','resumed_at',dt+interval '0.1 seconds'))));
+ a:=public.report_query('hours',make_date(yr,1,31),make_date(yr,1,31),jsonb_build_object('record',sid));
+ b:=public.report_query('hours',make_date(yr,2,1),make_date(yr,2,1),jsonb_build_object('record',sid));
+ c:=public.report_query('hours',make_date(yr,1,31),make_date(yr,2,1),jsonb_build_object('record',sid));
+ if (a->'summary'->>'segundos_periodo')::bigint+(b->'summary'->>'segundos_periodo')::bigint<>(select worked_seconds from public.work_sessions where id=sid) or c->'summary'->>'segundos_periodo'<>'2' then raise exception 'Segment mismatch';end if;
+ perform public.work_operate(gen_random_uuid(),'historical',gen_random_uuid(),null,jsonb_build_object('order_id',oid,'user_id',actor,'started_at',dt+interval '1 day','finished_at',dt+interval '1 day 18 seconds','hourly_rate','1.00','reason','Prueba centavos','pauses','[]'::jsonb));
+ perform public.work_operate(gen_random_uuid(),'historical',gen_random_uuid(),null,jsonb_build_object('order_id',oid,'user_id',actor,'started_at',dt+interval '1 day 1 minute','finished_at',dt+interval '1 day 1 minute 18 seconds','hourly_rate','1.00','reason','Prueba centavos','pauses','[]'::jsonb));
+ c:=public.report_query('hours',make_date(yr,2,2),make_date(yr,2,2),jsonb_build_object('q',(select order_number from public.orders where id=oid)));
+ if c->'summary'->>'importe_crc'<>'0.01' or (select sum((x->>'costo_periodo_crc')::numeric) from jsonb_array_elements(c->'rows') x)<>0.01 then raise exception 'Hourly displayed cents mismatch';end if;
+ if exists(select 1 from public.work_sessions where user_id=actor and status<>'finished') then raise exception 'Do not interfere with an existing session';end if;
+ update public.settings set hourly_rate=1 where singleton;
+ perform public.transition_order(oid,2,'{"state":"in_production"}');
+ perform public.work_operate(gen_random_uuid(),'start',running,null,jsonb_build_object('order_id',oid));
+ c:=public.report_query('profit',make_date(yr,1,1),make_date(yr,12,31),jsonb_build_object('record',oid));
+ if c->'summary'->>'global_profit' is not null or c->'summary'->>'global_margin' is not null or c->'summary'->>'pedidos_incompletos'<>'1' then raise exception 'Incomplete cost aggregation';end if;
+ if c->'summary'->>'ingreso_incompleto_crc'<>'10.00' then raise exception 'Incomplete revenue lost';end if;
+ raise notice 'PASS temporal boundary, overlapping pause, cumulative seconds, incomplete global profit and separate subset';
+end $$;
+rollback;

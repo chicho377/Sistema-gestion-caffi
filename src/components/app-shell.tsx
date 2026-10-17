@@ -116,6 +116,7 @@ export function AppShell({
         <Ellipsis size={20} />
         Más
       </Link>
+      <Link href="/reportes" onClick={() => setOpen(false)}><ClipboardList size={20}/>Reportes</Link>
       {role === "admin" && (
         <>
           <span className="nav-caption">ADMINISTRACIÓN</span>
