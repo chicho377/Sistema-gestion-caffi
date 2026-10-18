@@ -642,3 +642,9 @@ B6-02: stock, mínimos, pedidos activos/alertas y envíos pendientes son Situaci
 B6-03: si hay pedidos con costo incompleto en el conjunto, utilidad y margen globales indeterminados. Mostrar bloque Pedidos con información completa (cantidad, ingreso, costo, utilidad, margen) y Excluidos por información incompleta (cantidad, ingreso comercial, causas). Subtotal completo nunca se denomina utilidad global. Cobertura es indicador separado, no margen. Con todos completos se permite resultado global.
 
 Tarifa empresarial continúa NULL, sin valor inventado. Reutilizar RLS/perfiles vigentes y confirmar permisos en servidor/exportaciones. Sin tablas financieras nuevas, cambios destructivos ni alteraciones de snapshots. Cierre condicionado a matriz sin pendientes funcionales, regresión, exportaciones y seguridad verificadas; commit feat: implement and validate phase 6 dashboard and reporting y tag v0.13-phase6-complete, sin sobrescribir.
+
+## Fase 7 — preparación técnica autorizada
+
+Sin módulos nuevos ni cambios de negocio. Endurecimiento derivado de seguridad: cookies Supabase SSR/browser/proxy con SameSite=Lax y Secure cuando NODE_ENV=production; no HttpOnly en cookies compartidas con el cliente SSR, porque el cliente necesita renovar sesión. Cookie de autorización de cambio de contraseña mantiene HttpOnly/Secure y firma/expiración existentes. Esto no reemplaza HTTPS ni la verificación de perfil. Recursos PROD y acceso Vercel no identificados; no desplegar DEV como producción.
+
+Corrección visual preproducción: importes de tablas de costeo en escritorio no se dividen entre líneas; conservar scroll local y tarjetas móviles, sin cambiar cálculos.

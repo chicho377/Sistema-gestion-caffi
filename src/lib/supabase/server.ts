@@ -7,6 +7,7 @@ export async function createClient() {
   if (!env) throw new Error("El servicio de acceso no está configurado.");
   const jar = await cookies();
   return createServerClient(env.url, env.key, {
+    cookieOptions: { secure: process.env.NODE_ENV === "production", sameSite: "lax" },
     cookies: {
       getAll: () => jar.getAll(),
       setAll(values) {

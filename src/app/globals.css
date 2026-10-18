@@ -1179,3 +1179,11 @@ details[open] > summary {
 .report-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:16px;margin-bottom:24px}.report-filters label{display:flex;flex-direction:column;gap:8px;min-width:0}.report-filters input,.report-filters select{min-height:44px;width:100%;font-size:16px}.report-values{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:16px}.report-values div{min-width:0}.report-values dt{font-size:14px;color:var(--color-muted)}.report-values dd{margin:4px 0;overflow-wrap:anywhere}.report-values pre,.report-table pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:500px}.report-cards{display:grid;gap:16px;margin:24px 0}.report-table{display:none}.report-table th,.report-table td{padding:12px;max-width:320px;min-width:140px;overflow-wrap:anywhere;text-align:left}.report-table th{background:var(--color-surface-pink)}@media(min-width:1024px){.report-cards{display:none}.report-table{display:block;overflow-x:auto;max-width:100%;margin:24px 0}.report-table table{border-collapse:collapse;width:100%}}
 
 .report-series{list-style:none;padding:0;display:grid;gap:16px}.report-series li{display:grid;grid-template-columns:1fr auto;gap:6px;overflow-wrap:anywhere}.report-bar{grid-column:1/-1;height:8px;background:var(--color-primary);border-radius:8px}
+
+@media (min-width: 1024px) {
+  .costing-table-wrap .catalog-table th,
+  .costing-table-wrap .catalog-table td:is([data-label="Ingreso"], [data-label="Materiales"], [data-label="Trabajo"], [data-label="Gastos"], [data-label="Costo"], [data-label="Utilidad"], [data-label="Margen"]) {
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+}

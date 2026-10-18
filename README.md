@@ -418,3 +418,13 @@ R1–R7 y auditoría disponen de Excel/PDF generados en servidor, filtros y pagi
 Cuatro migraciones nuevas y 34 equivalentes local/DEV; fingerprint de ocho funciones equivalente y dry-run vacío. Validación: 33 pruebas locales, 26 E2E simulados, 57 comprobaciones API reales, 15 de seguridad y 141 UI/HTTP (incluye dos fallos de red inducidos), más 513 comprobaciones de regresión real. Responsive en 320/375/768/1024/1440, ambos roles. Reproducción, SQL independiente y matriz de 25 criterios: [PHASE6_VERIFICATION.md](docs/PHASE6_VERIFICATION.md).
 
 Lint, typecheck, tests y build aprobados; audit de producción sin vulnerabilidades. A51 permanece obligatorio antes de producción; order_counters mantiene aislamiento intencional; 45 INFO de Performance documentados sin retirar índices. settings.hourly_rate permanece NULL como dato empresarial pendiente. No se avanzó a Fase 7.
+
+## Preparación V1 — Fase 7
+
+Candidato de preproducción, no producción declarada lista. La aplicación mantiene los módulos cerrados de Fases 1–6; Fase 7 endurece las cookies de sesión (Secure en producción, SameSite=Lax) y ejecuta regresión. No añade migraciones ni reglas de negocio.
+
+Documentación vigente: [verificación](docs/PHASE7_VERIFICATION.md), [checklist de producción](docs/PRODUCTION_CHECKLIST.md), [despliegue](docs/DEPLOYMENT.md), [backup/recuperación](docs/BACKUP_RECOVERY.md), [guía de usuario](docs/USER_GUIDE.md), [guía Admin](docs/ADMIN_GUIDE.md), [notas V1](docs/RELEASE_NOTES_v1.md).
+
+PROD_SUPABASE_REQUIRED: falta proyecto separado identificado. VERCEL_PROD_CONFIGURATION_REQUIRED: la conexión disponible pertenece a otro equipo que el despliegue mencionado por Auth DEV. No se cambió DEV a PROD ni se copiaron datos de prueba. A51 permanece pendiente antes de producción por plan Free. Sin backups recuperables/PITR verificados en el plan actual; política y ensayo de recuperación PROD pendientes. El dato hourly_rate sigue NULL (bloquea Play solamente); logo opcional pendiente. No publicar v1.0.0 hasta resolver los BLOCKER de la checklist.
+
+Candidato validado: **v0.14-rc1** (2026-10-18). Matriz de cierre: 12 PASS / 6 BLOCKER de producción / 4 POST-RELEASE. Recorrido adicional de 360 comprobaciones DEV aprobado; lint/typecheck/33 tests/build/26 E2E y regresiones documentados. No equivale a producción desplegada.

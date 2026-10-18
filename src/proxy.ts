@@ -19,6 +19,7 @@ export async function proxy(request: NextRequest) {
   };
   if (!env) return protectedPath ? deny() : response;
   const client = createServerClient(env.url, env.key, {
+    cookieOptions: { secure: process.env.NODE_ENV === "production", sameSite: "lax" },
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll(values) {

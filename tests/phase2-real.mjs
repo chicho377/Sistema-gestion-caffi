@@ -8,6 +8,7 @@ import { mkdir } from "node:fs/promises";
 if (process.env.SIGCA_REAL_TESTS !== "1")
   throw Error("Requiere SIGCA_REAL_TESTS=1");
 process.loadEnvFile(".env.local");
+const base = process.env.SIGCA_UI_URL ?? "http://localhost:3000";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL,
   key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 if (url !== "https://pysgfnwsycgoneaecgcl.supabase.co")
@@ -70,7 +71,7 @@ async function session(email) {
 }
 async function go(who, path) {
   stage = path;
-  await who.page.goto("http://localhost:3000" + path);
+  await who.page.goto(base + path);
 }
 async function saved(page) {
   await expect(page.locator("main [role=alert]")).toHaveCount(0);
@@ -250,7 +251,7 @@ try {
     "UI Colaborador sin costo",
   );
   const memberHtml = await member.context.request.get(
-    "http://localhost:3000/materiales/" + materialId,
+    base + "/materiales/" + materialId,
   );
   ok(
     !(await memberHtml.text()).includes("12.345"),
@@ -341,7 +342,7 @@ try {
   );
   const imageId = photos.data[0].id;
   for (const actor of [admin, member]) {
-    const download = await actor.context.request.get("http://localhost:3000/api/catalog-image/" + imageId);
+    const download = await actor.context.request.get(base + "/api/catalog-image/" + imageId);
     ok(download.status() === 200 && download.headers()["content-type"]?.includes("image/webp"),
       "Descarga privada permitida a rol activo y bytes WebP");
     ok(download.headers()["cache-control"]?.includes("no-store"), "Imagen sin caché compartida");
@@ -356,7 +357,7 @@ try {
   ok(!!unauthorized.error, "Descarga anónima denegada");
   const noSession = await browser.newContext();
   const response = await noSession.request.get(
-    "http://localhost:3000/api/catalog-image/" + imageId,
+    base + "/api/catalog-image/" + imageId,
   );
   ok(response.status() === 401, "Ruta imagen sin sesión rechazada");
   await noSession.close();
@@ -466,9 +467,9 @@ try {
   await member.page.getByRole("button", { name: "Retirar del catálogo" }).click();
   await member.page.locator(".swal2-confirm").click();
   await expect(member.page.getByText("Todavía no hay fotografías.", { exact: false })).toBeVisible();
-  ok((await member.context.request.get("http://localhost:3000/api/catalog-image/" + imageId)).status() === 404,
+  ok((await member.context.request.get(base + "/api/catalog-image/" + imageId)).status() === 404,
     "Referencia retirada ya no se descarga por su ruta");
-  ok((await member.context.request.get("http://localhost:3000/api/catalog-image/" + clonedImages.data[0].id)).status() === 200,
+  ok((await member.context.request.get(base + "/api/catalog-image/" + clonedImages.data[0].id)).status() === 200,
     "Retirar original conserva referencia privada duplicada");
   await go(member, "/clientes/" + clientId);
   await member.page
@@ -496,7 +497,7 @@ try {
     "RLS inmediata para sesión inactiva",
   );
   const deniedImage = await member.context.request.get(
-    "http://localhost:3000/api/catalog-image/" + imageId,
+    base + "/api/catalog-image/" + imageId,
   );
   ok(deniedImage.status() === 401, "Imagen bloqueada tras inactivación");
   await member.page.evaluate(() => window.dispatchEvent(new Event("focus")));
@@ -533,7 +534,7 @@ try {
   await member.context.unroute("**/clientes/" + clientId);
   ok(true, "Error de red en guardado conserva formulario y muestra mensaje");
   await member.context.setOffline(true);
-  await member.page.goto("http://localhost:3000/clientes").catch(() => {});
+  await member.page.goto(base + "/clientes").catch(() => {});
   await member.context.setOffline(false);
   await go(member, "/clientes");
   await expect(
