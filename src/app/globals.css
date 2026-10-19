@@ -1246,3 +1246,30 @@ details[open] > summary {
 .report-detail dt { font-weight: 500; }
 .report-detail dd { margin: 2px 0 0; overflow-wrap: anywhere; }
 .report-detail-list { margin: 0; padding-left: 20px; }
+
+/* Ritmo compartido de todas las pantallas privadas, incluidos sus detalles. */
+.workspace-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 24px;
+  width: 100%;
+}
+.workspace-main > * { min-width: 0; margin-block: 0; }
+.workspace-main > .button, .workspace-main > .text-link { justify-self: start; }
+.workspace-main .page-heading > div { min-width: 0; max-width: 100%; }
+.workspace-main :where(h1, h2, h3, p, dd, .text-link) { overflow-wrap: anywhere; }
+.workspace-main .button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.workspace-main .button svg { flex-shrink: 0; }
+.workspace-main .panel > :first-child { margin-top: 0; }
+.workspace-main .panel > :last-child { margin-bottom: 0; }
+@media (max-width: 767px) {
+  .workspace-main .panel { padding: 20px; }
+  .workspace-main > .button { justify-self: stretch; width: 100%; }
+  .workspace-main .order-actions { gap: 12px; }
+  .workspace-main .order-actions > .button { width: 100%; }
+}

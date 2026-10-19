@@ -11,3 +11,5 @@ supabase/.temp/
 supabase/.branches/
 .vercel/
 *.log
+
+.codex-remote-attachments/
