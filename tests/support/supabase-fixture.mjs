@@ -43,6 +43,7 @@ let revoked = new Set();
 let catalogFailure = false;
 let catalogDelay = 0;
 let expensePreview = null;
+let dashboardShipments = {};
 const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
   res.setHeader(
@@ -71,6 +72,11 @@ const server = http.createServer(async (req, res) => {
     catalogFailure = false;
     catalogDelay = 0;
     expensePreview = null;
+    dashboardShipments = {};
+    return reply(200, {});
+  }
+  if (url.pathname === "/test/dashboard-state") {
+    dashboardShipments = body.shipments ?? {};
     return reply(200, {});
   }
   if (url.pathname === "/test/catalog-state") {
@@ -139,7 +145,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.endsWith("report_charts")) return reply(200,{monthly:[],categories:[],products:[]});
     if (url.pathname.endsWith("dashboard_query")) {
       const empty={rows:[],count:0,summary:{registros:0},page:1,page_size:8};
-      return reply(200,{current_orders:{...empty,kind:'operation'},low_stock:{...empty,kind:'inventory'},hours:{segundos_periodo:'0',segundos_provisionales:'0'},shipments:{...empty,kind:'shipments'},shipment_current_states:{},alerts:{atrasados:0,proximos:0},...(key==='admin'?{sales:{importe_crc:'0',registros:0},active_sales:{importe_crc:'0',cantidad:0},cash:{payments_crc:'0',manual_income_crc:'0',expenses_crc:'0',movimiento_neto_crc:'0'},profit:{},provisional_profit:{},saldo_actual_crc:'0'}:{})});
+      return reply(200,{current_orders:{...empty,kind:'operation'},low_stock:{...empty,kind:'inventory'},hours:{segundos_periodo:'0',segundos_provisionales:'0'},shipments:{...empty,kind:'shipments'},shipment_current_states:dashboardShipments,alerts:{atrasados:0,proximos:0},...(key==='admin'?{sales:{importe_crc:'0',registros:0},active_sales:{importe_crc:'0',cantidad:0},cash:{payments_crc:'0',manual_income_crc:'0',expenses_crc:'0',movimiento_neto_crc:'0'},profit:{},provisional_profit:{},saldo_actual_crc:'0'}:{})});
     }
     if (url.pathname.endsWith("record_invitation") && key !== "admin")
       return reply(403, { message: "Forbidden" });

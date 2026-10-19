@@ -20,7 +20,39 @@ export function period(p:Params,now=new Date()){
  }if(from>to)throw Error('La fecha inicial debe preceder la final.');return {from,to};
 }
 export function request(p:Params){const range=period(p),kind=p.kind??'orders';if(!(kind in reports))throw Error('Reporte inválido.');const page=Number(p.page??1);if(!Number.isInteger(page)||page<1||page>1000000)throw Error('Página inválida.');const filters=Object.fromEntries(['q','state','source','record','entity','user'].filter(k=>p[k]).map(k=>[k,p[k]]));if((p.q?.length??0)>200)throw Error('Búsqueda demasiado larga.');return {kind:kind as Kind,first_day:range.from,last_day:range.to,filters,page_no:page,page_size:25};}
-export const label=(key:string)=>({worked_seconds:'Segundos trabajados',profit_per_hour:'Ganancia por hora CRC',commercial_total:'Total comercial CRC',production_status:'Estado productivo',unallocated_order_cost:'Costo no asignado CRC',shared_cost:'Costo compartido CRC',estimated_minutes:'Estimación histórica en minutos',estimate_captured_at:'Estimación capturada',name:'Nombre',active:'Activo',global_profit:'Utilidad global CRC',global_margin:'Margen global %',segundos_periodo:'Segundos trabajados en el período',importe_crc:'Importe CRC',movimiento_neto_crc:'Movimiento financiero neto CRC',payments_crc:'Pagos recibidos CRC',manual_income_crc:'Ingresos manuales CRC',expenses_crc:'Gastos CRC',revenue:'Ingreso comercial CRC',profit:'Utilidad CRC',margin_percent:'Margen %',material_cost:'Materiales CRC',labor_cost:'Mano de obra CRC',expense_cost:'Gastos CRC',total_cost:'Costo total CRC',number:'Pedido',client:'Cliente',state:'Clasificación',complete:'Información completa',warnings:'Causas',lines:'Detalle por línea',sources:'Fuentes históricas'} as Record<string,string>)[key]??key.replaceAll('_',' ');
+export const label=(key:string)=>({
+ pending:'Pendiente',preparing:'En preparación',shipped:'Despachado',delivered:'Entregado',cancelled:'Cancelado',
+ quote:'Cotización',confirmed:'Confirmado',in_production:'En producción',ready:'Listo',
+ valid:'Válido',voided:'Anulado',running:'En curso',paused:'En pausa',finished:'Finalizado',
+ shipping:'Envío',personal_delivery:'Entrega personal',pickup:'Retiro personal',
+ provisional:'Provisional',realized:'Realizada',payments:'Pagos de pedidos',manual_income:'Ingresos manuales',expenses:'Gastos',
+ cash:'Efectivo',transfer:'Transferencia',card:'Tarjeta',sinpe:'SINPE',other:'Otro',
+ source_type:'Origen',before:'Antes',after:'Después',metadata:'Detalle',
+ total_crc:'Total (CRC)',pagado_crc:'Pagado (CRC)',pagos_validos_actuales_crc:'Pagos válidos actuales (CRC)',
+ monto_crc:'Monto (CRC)',monto_original:'Monto original',fecha_tasa:'Fecha de la tasa',
+ fecha_pedido:'Fecha del pedido',fecha_solicitada:'Fecha solicitada',estado_financiero:'Estado financiero',
+ minimo:'Mínimo',codigo:'Código',linea:'Línea',categoria:'Categoría',descripcion:'Descripción',
+ valoracion_crc:'Valor del inventario (CRC)',promedio_crc:'Costo promedio (CRC)',
+ tarifa_crc:'Tarifa por hora (CRC)',costo_periodo_crc:'Costo del período (CRC)',
+ horas_periodo:'Horas del período',segundos_sesion:'Segundos de la sesión',
+ estimacion_linea_minutos:'Estimación histórica de la línea (min)',estimacion_estado:'Disponibilidad de estimación',
+ costo_operativo_crc:'Costo operativo (CRC)',gasto_id:'Referencia del gasto',estado_gasto:'Estado del gasto',
+ guia:'Guía',accion:'Acción',usuario_id:'Identificador de usuario',
+
+ ventas_realizadas_crc:'Ventas realizadas (CRC)',
+ pedidos_entregados:'Pedidos entregados',
+ ticket_promedio_entregados_crc:'Venta promedio por pedido entregado (CRC)',
+ ventas_comprometidas_crc:'Ventas comprometidas (CRC)',
+ pedidos_comprometidos:'Pedidos comprometidos',
+ segundos_provisionales:'Segundos de sesiones en curso',
+ pedidos_activos:'Pedidos activos',atrasados:'Pedidos atrasados',proximos:'Próximos a entregar',
+ materiales_bajo_minimo:'Materiales bajo mínimo',envios_pendientes:'Envíos pendientes por estado',
+ saldo_actual_crc:'Saldo pendiente actual (CRC)',
+ materiales_crc:'Costo de materiales (CRC)',mano_obra_crc:'Costo de mano de obra (CRC)',otros_gastos_crc:'Otros gastos (CRC)',
+ cantidad:'Cantidad',cantidad_pedidos:'Cantidad de pedidos',ingreso_crc:'Ingreso (CRC)',costo_crc:'Costo (CRC)',
+ utilidad_subtotal_crc:'Utilidad de pedidos completos (CRC)',margen_subtotal:'Margen de pedidos completos (%)',
+ ingreso_comercial_crc:'Ingreso comercial (CRC)',causas:'Causas de información incompleta',
+worked_seconds:'Segundos trabajados',profit_per_hour:'Ganancia por hora CRC',commercial_total:'Total comercial CRC',production_status:'Estado productivo',unallocated_order_cost:'Costo no asignado CRC',shared_cost:'Costo compartido CRC',estimated_minutes:'Estimación histórica en minutos',estimate_captured_at:'Estimación capturada',name:'Nombre',active:'Activo',global_profit:'Utilidad global CRC',global_margin:'Margen global %',segundos_periodo:'Segundos trabajados en el período',importe_crc:'Importe CRC',movimiento_neto_crc:'Movimiento financiero neto CRC',payments_crc:'Pagos recibidos CRC',manual_income_crc:'Ingresos manuales CRC',expenses_crc:'Gastos CRC',revenue:'Ingreso comercial CRC',profit:'Utilidad CRC',margin_percent:'Margen %',material_cost:'Materiales CRC',labor_cost:'Mano de obra CRC',expense_cost:'Gastos CRC',total_cost:'Costo total CRC',number:'Pedido',client:'Cliente',state:'Clasificación',complete:'Información completa',warnings:'Causas',lines:'Detalle por línea',sources:'Fuentes históricas'} as Record<string,string>)[key]??(key.charAt(0).toUpperCase()+key.slice(1).replaceAll('_',' ').replace(/\bcrc\b/g,'CRC'));
 export function display(v:unknown):string {if(v===null||v===undefined)return 'No disponible';if(typeof v==='boolean')return v?'Sí':'No';if(typeof v==='object')return JSON.stringify(v,null,2);return String(v);}
 export function columns(r:Report){if(r.kind==='profit')return ['number','client','production_status','state','revenue','material_cost','labor_cost','expense_cost','total_cost','profit','margin_percent','complete','warnings'];return [...new Set(r.rows.flatMap(row=>Object.keys(row)))].filter(k=>!['id','order_id','lines','sources'].includes(k));}
 export function exportSummary(r:Report){const keys=r.kind==='profit'?['estado_costos','global_profit','global_margin','pedidos_completos','pedidos_incompletos','ingreso_completo_crc','costo_completo_crc','utilidad_completos_crc','margen_completos','ingreso_incompleto_crc','materiales_crc','mano_obra_crc','otros_gastos_crc','causas']:r.kind==='cash'?['payments_crc','manual_income_crc','expenses_crc','movimiento_neto_crc']:r.kind==='hours'?['segundos_periodo','segundos_provisionales','importe_crc']:['orders','payments','balances','inventory'].includes(r.kind)?['importe_crc']:[];return Object.entries(r.summary).filter(([k])=>['registros','estados',...keys].includes(k));}

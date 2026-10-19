@@ -65,6 +65,13 @@ for (const width of widths) {
     await expect(
       page.getByRole("heading", { name: "Dashboard" }),
     ).toBeVisible();
+    await expect(page.getByText("Venta promedio por pedido entregado (CRC)", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Fase 5/)).toHaveCount(0);
+    const chartPanels = page.locator(".dashboard-charts > .panel");
+    await expect(chartPanels).toHaveCount(4);
+    const firstChart = await chartPanels.nth(0).boundingBox();
+    const nextChart = await chartPanels.nth(width < 768 ? 1 : 2).boundingBox();
+    expect(nextChart!.y - (firstChart!.y + firstChart!.height)).toBeGreaterThanOrEqual(23);
     await page.screenshot({
       path: `test-results/dashboard-${width}.png`,
       fullPage: true,
@@ -161,3 +168,22 @@ test("Contraseñas distintas, confirmación de cambios y movimiento reducido", a
       .evaluate((el) => getComputedStyle(el).transitionDuration),
   ).toBe("0s");
 });
+
+for (const role of ["admin", "member"]) {
+ test(`Dashboard: estados legibles y sin objetos crudos ${role}`, async ({page,request}) => {
+  await login(page, role);
+  await expect(page.getByText("Sin envíos pendientes", {exact:true})).toBeVisible();
+  await request.post("http://127.0.0.1:54329/test/dashboard-state", {data:{shipments:{pending:2,preparing:1}}});
+  for (const width of widths) {
+   await page.setViewportSize({width,height:900});
+   await page.goto('/dashboard');
+   const group=page.locator('.report-values > div').filter({has:page.locator('dt').filter({hasText:'Envíos pendientes por estado'})});
+   await expect(group.getByText('Pendiente',{exact:true})).toBeVisible();
+   await expect(group.getByText('En preparación',{exact:true})).toBeVisible();
+   await expect(group).not.toContainText('pending');
+   await expect(group.locator('pre')).toHaveCount(0);
+   await noOverflow(page);
+   if(role==='member') await expect(page.getByRole('heading',{name:'Ventas del período'})).toHaveCount(0);
+  }
+ });
+}
